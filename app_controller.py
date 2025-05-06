@@ -1,13 +1,18 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+from typing import Self
 from PIL import Image, ImageTk
 import requests
 from io import BytesIO
+from ui.dolar_widget import DolarFloatingWidgetRealtime
 from datetime import datetime, timedelta
 import calendar
 import locale
+from ui.dashboard_financiero import DashboardFinanciero
 import os
-
+from ui.dashboard_financiero import DashboardFinanciero
+from ui.presupuesto_frame import PresupuestoFrame
+from model.ia_module import modulo_ia
 from ui.frames.gastos_frame import GastosFrame
 from ui.frames.ingresos_frame import IngresosFrame
 from model.gastos import calcular_total_gastos
@@ -115,7 +120,13 @@ class AppController:
         except Exception as e:
             print(f"Error durante la inicialización de componentes: {e}")
             messagebox.showerror("Error de inicialización", f"Ocurrió un error: {e}")
+
+        # Crear botones para las funcionalidades de IA
+        self.crear_boton_dashboard()
+        self.crear_boton_presupuesto()
     
+        # Crear botón para el widget del dólar
+        self.crear_boton_dolar()
     def cargar_imagen_fondo(self):
         """Carga una imagen de fondo con gatitos"""
         try:
@@ -276,6 +287,34 @@ class AppController:
         
         # Hacer el botón redondeado
         self.redondear_widget(self.btn_mostrar_balance)
+
+    # Modificar el método crear_boton_dolar para usar la nueva implementación
+    def crear_boton_dolar(self):
+        """Crea el botón para mostrar el widget del dólar"""
+        self.dolar_widget = DolarFloatingWidgetRealtime(self)
+        
+        self.btn_mostrar_dolar = tk.Button(
+            self.bottom_panel, 
+            text="💵 Dólar HOY", 
+            command=self.mostrar_widget_dolar, 
+            font=("Comic Sans MS", 11, "bold"), 
+            bg=self.colores['claro']['acento_oscuro'],
+            fg="white",
+            padx=15,
+            pady=8,
+            relief=tk.FLAT,
+            cursor="hand2",
+            borderwidth=0
+        )
+        self.btn_mostrar_dolar.pack(side=tk.LEFT, padx=10)
+        self.redondear_widget(self.btn_mostrar_dolar)
+    def mostrar_widget_dolar(self):
+        """Muestra el widget de cotización del dólar"""
+        try:
+            self.dolar_widget.mostrar_widget()
+        except Exception as e:
+            print(f"Error al mostrar widget del dólar: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el widget del dólar: {e}")
     
     def crear_boton_borrar_todo(self):
         self.btn_borrar_todo = tk.Button(
@@ -586,6 +625,49 @@ class AppController:
         except Exception as e:
             print(f"Error al mostrar balance: {e}")
             messagebox.showerror("Error", f"No se pudo mostrar el balance: {e}")
+
+    def crear_boton_presupuesto(self):
+        """Crea el botón para el presupuesto inteligente"""
+        self.btn_mostrar_presupuesto = tk.Button(
+            self.bottom_panel, 
+            text="💰 Presupuesto IA", 
+            command=self.mostrar_presupuesto_ai, 
+            font=("Comic Sans MS", 11, "bold"), 
+            bg=self.colores['claro']['acento_oscuro'],
+            fg="white",
+            padx=15,
+            pady=8,
+            relief=tk.FLAT,
+            cursor="hand2",
+            borderwidth=0
+        )
+        self.btn_mostrar_presupuesto.pack(side=tk.LEFT, padx=10)
+        self.redondear_widget(self.btn_mostrar_presupuesto)
+
+    def mostrar_dashboard_ai(self):
+        """Muestra el dashboard financiero inteligente"""
+        try:
+            dashboard = DashboardFinanciero(self.root, self)
+        except Exception as e:
+            print(f"Error al mostrar dashboard: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el dashboard: {e}")
+
+    def mostrar_presupuesto_ai(self):
+        """Muestra la interfaz de presupuesto inteligente"""
+        try:
+            presupuesto = PresupuestoFrame(self.root, self)
+        except Exception as e:
+            print(f"Error al mostrar presupuesto: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el presupuesto: {e}")
+
+    def abrir_analisis_categoria(self, categoria):
+        """Abre el análisis detallado de una categoría"""
+        try:
+            from ui.categoria_analisis import CategoriaAnalisis
+            analisis = CategoriaAnalisis(self.root, self, categoria)
+        except Exception as e:
+            print(f"Error al abrir análisis de categoría: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el análisis: {e}")
     
     def confirmar_borrar_todo(self):
         """Muestra un cuadro de diálogo para confirmar la eliminación de todos los datos excepto historial"""
@@ -768,3 +850,29 @@ class AppController:
             print(f"Error al calcular fecha de ingreso: {e}")
             # En caso de error, devolver la fecha actual + 22 días como fallback
             return datetime.now() + timedelta(days=22)
+        
+    def crear_boton_dashboard(self):
+        """Crea el botón para abrir el dashboard financiero IA"""
+        self.btn_mostrar_dashboard = tk.Button(
+            self.bottom_panel, 
+            text="🧠 Dashboard IA", 
+            command=self.mostrar_dashboard_ai, 
+            font=("Comic Sans MS", 11, "bold"), 
+            bg=self.colores['claro']['acento_oscuro'],
+            fg="white",
+            padx=15,
+            pady=8,
+            relief=tk.FLAT,
+            cursor="hand2",
+            borderwidth=0
+        )
+        self.btn_mostrar_dashboard.pack(side=tk.LEFT, padx=10)
+        self.redondear_widget(self.btn_mostrar_dashboard)
+
+    def mostrar_dashboard_ai(self):
+        """Muestra el dashboard financiero inteligente"""
+        try:
+            dashboard = DashboardFinanciero(self.root, self)
+        except Exception as e:
+            print(f"Error al mostrar dashboard: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el dashboard: {e}")

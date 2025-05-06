@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from tkcalendar import DateEntry
 import locale
 import csv
+from model.ia_module import modulo_ia
 import os
 import calendar
 from model.data_manager import cargar_datos, guardar_gasto, eliminar_dato
@@ -41,6 +42,71 @@ class GastosFrame(tk.Frame):
         
         # Crear widgets para gastos
         self.crear_widgets()
+
+    def auto_categorizar_gasto(self, nombre_gasto):
+        return modulo_ia.categorizar_gasto(nombre_gasto)
+
+    def agregar_gasto(self):
+        """Agrega un nuevo gasto a la base de datos con categorización automática"""
+        # Obtener el modo actual para los colores
+        modo = 'oscuro' if self.controller.modo_noche else 'claro'
+        colores = self.controller.colores[modo]
+        
+        # Obtener valores de los campos
+        nombre = self.combo_gasto_nombre.get().strip()
+        monto_str = self.entry_gasto_monto.get().strip()
+        
+        # Validar que el nombre no esté vacío
+        if not nombre:
+            messagebox.showerror("Error", "Debe ingresar un nombre para el gasto.")
+            self.combo_gasto_nombre.focus_set()
+            return
+        
+        # Validar y convertir el monto
+        try:
+            monto = float(monto_str.replace(',', '.'))  # Reemplazar coma por punto para usuarios argentinos
+            if monto <= 0:
+                messagebox.showerror("Error", "El monto debe ser mayor que cero.")
+                self.entry_gasto_monto.focus_set()
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Monto inválido. Por favor, ingrese un número válido.")
+            self.entry_gasto_monto.focus_set()
+            return
+        
+        # Obtener estado del checkbox (recurrente o no)
+        recurrente = self.chk_var_recurrente.get() == 1
+        
+        # Obtener la fecha seleccionada del DateEntry
+        fecha_seleccionada = self.date_selector.get_date()
+        fecha_str = fecha_seleccionada.strftime("%Y-%m-%d")
+        
+        # Categorizar automáticamente
+        categoria = self.auto_categorizar_gasto(nombre)
+        
+        # Guardar el gasto en la base de datos
+        try:
+            if guardar_gasto(nombre, monto, recurrente, fecha_str):
+                # Mostrar mensaje de éxito con categoría detectada
+                mensaje = f"✅ El gasto '{nombre}' de ${monto:.2f} ha sido registrado correctamente."
+                if categoria != 'otros':
+                    mensaje += f"\n\nCategoría detectada: {categoria}"
+                
+                messagebox.showinfo("Gasto Registrado", mensaje)
+                
+                # Limpiar los campos
+                self.combo_gasto_nombre.set("")
+                self.entry_gasto_monto.delete(0, tk.END)
+                self.chk_var_recurrente.set(0)
+                self.combo_gasto_nombre.focus_set()
+                
+                # Actualizar la lista de nombres de gastos históricos
+                self.nombres_gastos_historicos = self.cargar_nombres_gastos_historicos()
+                self.combo_gasto_nombre['values'] = self.nombres_gastos_historicos
+            else:
+                messagebox.showerror("Error", "No se pudo guardar el gasto. Intente nuevamente.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error al guardar el gasto: {str(e)}")
         
     def crear_widgets(self):
         colores = self.controller.colores['claro']
