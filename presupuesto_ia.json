@@ -1,0 +1,32 @@
+{
+    "alimentación": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 25.0% de sus ingresos."
+    },
+    "vivienda": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 30.0% de sus ingresos."
+    },
+    "transporte": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 15.0% de sus ingresos."
+    },
+    "servicios": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+    },
+    "otros": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+    },
+    "ahorro": {
+        "sugerido": 0.0,
+        "historico_promedio": 0,
+        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+    }
+}

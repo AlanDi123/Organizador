@@ -1,0 +1,37 @@
+{
+    "categorias_gasto": {
+        "alimentación": ["supermercado", "verdulería", "carnicería", "almacén", "restaurant", "comida", "delivery", "mercado", "super", "pizza", "panadería", "kiosco"],
+        "transporte": ["combustible", "nafta", "gasolina", "sube", "taxi", "uber", "remis", "colectivo", "subte", "tren", "peaje", "estacionamiento", "auto"],
+        "servicios": ["luz", "gas", "agua", "internet", "wifi", "teléfono", "celular", "electricidad", "factura", "servicio", "cable", "streaming"],
+        "ocio": ["cine", "teatro", "concierto", "salida", "bar", "netflix", "spotify", "juego", "libro", "música", "deporte", "gimnasio", "entrenamiento"],
+        "salud": ["farmacia", "médico", "consulta", "medicina", "hospital", "clínica", "obra social", "medicamento", "terapia", "dentista", "remedio"],
+        "educación": ["curso", "universidad", "facultad", "colegio", "escuela", "libro", "material", "cuota", "matrícula", "academia", "capacitación"],
+        "hogar": ["alquiler", "expensas", "mueble", "reparación", "limpieza", "electrodoméstico", "casa", "decoración", "jardín", "herramienta"],
+        "ropa": ["zapatilla", "zapato", "remera", "pantalón", "ropa", "vestido", "tienda", "calzado", "camisa", "indumentaria", "prenda"],
+        "tecnología": ["celular", "computadora", "laptop", "dispositivo", "accesorio", "gadget", "auriculares", "cargador", "software", "hardware"],
+        "impuestos": ["impuesto", "afip", "dgi", "iva", "municipal", "tasa", "gravamen", "tributo", "monotributo", "declaración", "fiscal"]
+    },
+    "anomalias": {
+        "umbral_z": 2.0,
+        "min_gastos_para_deteccion": 5
+    },
+    "recomendaciones": {
+        "umbral_ahorro_bajo": 10,
+        "umbral_ahorro_optimo": 20,
+        "umbral_concentracion_categoria": 40,
+        "umbral_gastos_recurrentes": 60
+    },
+    "presupuesto": {
+        "porcentajes_ideales": {
+            "alimentación": 25,
+            "vivienda": 30,
+            "transporte": 15,
+            "servicios": 10,
+            "ocio": 5,
+            "salud": 5,
+            "educación": 5,
+            "ahorro": 10,
+            "otros": 5
+        }
+    }
+}

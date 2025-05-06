@@ -5,6 +5,21 @@ import sys
 import subprocess
 import traceback
 
+# Configurar opciones para Windows
+def configurar_para_windows():
+    """Configura ajustes específicos para Windows si está disponible"""
+    if hasattr(sys, 'getwindowsversion'):
+        try:
+            import ctypes
+            from ctypes import windll
+            
+            # Ajustar configuración DPI para evitar problemas de escalado
+            windll.shcore.SetProcessDpiAwareness(1)
+            return True
+        except Exception as e:
+            print(f"No se pudo configurar para Windows: {e}")
+    return False
+
 # Importaciones envueltas en try-except para manejar errores de importación
 try:
     from utils import inicializar_db_wrapper
@@ -22,7 +37,7 @@ def verificar_dependencias():
     Returns:
         bool: True si todas las dependencias están disponibles, False en caso contrario
     """
-    dependencias_requeridas = ['pillow', 'requests', 'tkcalendar']
+    dependencias_requeridas = ['pillow', 'requests', 'matplotlib', 'tkcalendar', 'numpy']
     dependencias_faltantes = []
     
     try:
@@ -39,6 +54,16 @@ def verificar_dependencias():
         except ImportError:
             dependencias_faltantes.append('requests')
         
+        try:
+            import matplotlib
+        except ImportError:
+            dependencias_faltantes.append('matplotlib')
+            
+        try:
+            import numpy
+        except ImportError:
+            dependencias_faltantes.append('numpy')
+            
         try:
             from tkcalendar import DateEntry
         except ImportError:
@@ -76,6 +101,9 @@ def main():
     Función principal que inicializa y ejecuta la aplicación.
     """
     try:
+        # Configurar para Windows si es posible
+        configurar_para_windows()
+        
         # Verificar dependencias solo si no se está ejecutando desde un .bat
         if not os.environ.get('RUNNING_FROM_BAT'):
             verificar_dependencias()
@@ -100,11 +128,28 @@ def main():
         for icon_path in icon_paths:
             if os.path.exists(icon_path):
                 try:
-                    root.iconbitmap(icon_path) if icon_path.endswith('.ico') else None
+                    if icon_path.endswith('.ico'):
+                        root.iconbitmap(icon_path)
+                    elif icon_path.endswith('.png'):
+                        # Para sistemas que no soportan .ico
+                        logo = tk.PhotoImage(file=icon_path)
+                        root.iconphoto(True, logo)
                     break
                 except tk.TclError:
                     pass
         
+        # Configurar estilo para maximizar ventanas
+        try:
+            if hasattr(sys, 'getwindowsversion'):
+                # Personalizar estilo de ventana principal
+                import ctypes
+                hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+                style = ctypes.windll.user32.GetWindowLongW(hwnd, -16)  # GWL_STYLE
+                style |= 0x00010000  # WS_MAXIMIZEBOX
+                ctypes.windll.user32.SetWindowLongW(hwnd, -16, style)
+        except Exception as e:
+            print(f"Aviso: No se pudo configurar el estilo de maximizar: {e}")
+            
         # Inicializar el controlador de la aplicación
         app = AppController(root)
         
