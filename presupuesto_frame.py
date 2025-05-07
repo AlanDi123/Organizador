@@ -1,4 +1,5 @@
 # ui/presupuesto_frame.py
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
@@ -16,159 +17,70 @@ class PresupuestoFrame(tk.Toplevel):
         super().__init__(parent)
         self.controller = controller
         self.title("Presupuesto Inteligente")
+        
+        # Configurar para comportamiento nativo de ventana
+        self.resizable(True, True)
+        self.attributes('-alpha', 0.0)  # Ocultar temporalmente
+        
+        # Establecer como ventana normal, no de utilidad
+        if hasattr(self, 'attributes'):
+            self.attributes('-toolwindow', False)
+        
+        # Configurar ventana
         self.geometry("900x650")
         self.configure(bg=controller.colores['claro']['panel'])
+        self.minsize(600, 450)
         
-        # Inicializar banderas de control
+        # Vincular doble clic en la barra de título para maximizar
+        self.bind('<Double-Button-1>', self._toggle_maximize)
+        
+        # Inicializar datos
         self.interfaz_creada = False
         self.actualizando_interfaz = False
-        
-        # Permitir redimensionar la ventana
-        self.resizable(True, True)
-        
-        # Permitir maximizar/minimizar
-        self.minsize(600, 450)  # Tamaño mínimo
-        
-        # Centrar la ventana
-        self.centrar_ventana()
-        
-        # Agregar botón de maximizar en la parte superior
-        self.agregar_botones_ventana()
-        
-        # Hacer la ventana modal
-        self.transient(parent)
-        self.grab_set()
-        
-        # Inicializar sistema de presupuesto
         self.inicializar_datos()
         
         # Crear interfaz
         self.crear_interfaz()
         
+        # Centrar la ventana
+        self.centrar_ventana()
+        
+        # Hacer la ventana modal
+        self.transient(parent)
+        self.grab_set()
+        
         # Vincular evento de redimensionamiento
         self.bind("<Configure>", self.ajustar_interfaz)
-    
-    def inicializar_datos(self):
-        """Inicializa los datos necesarios para el presupuesto"""
-        try:
-            # Inicializar el sistema de presupuesto
-            self.sistema_presupuesto = PresupuestoInteligente()
-            
-            # Obtener datos históricos (adaptado para usar los métodos que existen)
-            # Asumiendo que hay métodos para obtener estos datos o podemos accederlos de otra manera
-            from model.data_manager import cargar_datos
-            self.gastos_recientes = cargar_datos("gastos") or []
-            self.ingresos_recientes = cargar_datos("ingresos") or []
-            
-            # Obtener o generar presupuesto actual 
-            # Verificar si estos métodos existen, si no, crear implementaciones alternativas
-            try:
-                self.presupuesto_actual = self.sistema_presupuesto.obtener_presupuesto_actual()
-            except AttributeError:
-                # Si el método no existe, intentar una alternativa
-                self.presupuesto_actual = getattr(self.sistema_presupuesto, 'presupuesto_actual', {})
-            
-            # Si no hay presupuesto, intentar generarlo con el método disponible
-            if not self.presupuesto_actual:
-                try:
-                    self.presupuesto_actual = self.sistema_presupuesto.generar_presupuesto_sugerido()
-                except AttributeError:
-                    # Si tampoco existe este método, inicializar con un diccionario vacío
-                    self.presupuesto_actual = {}
-                    print("No se pudo generar un presupuesto sugerido. Método no disponible.")
-            
-            # Calcular ingresos predichos
-            try:
-                self.ingresos_predichos = self.sistema_presupuesto.predecir_ingresos()
-            except AttributeError:
-                # Si el método no existe, calcular un valor aproximado basado en datos históricos
-                if self.ingresos_recientes:
-                    self.ingresos_predichos = sum(i['monto'] for i in self.ingresos_recientes) / len(self.ingresos_recientes)
-                else:
-                    self.ingresos_predichos = 0
-            
-            # Calcular seguimiento
-            try:
-                self.seguimiento = self.sistema_presupuesto.seguimiento_presupuesto(self.gastos_recientes)
-            except AttributeError:
-                # Si el método no existe, inicializar con un diccionario vacío
-                self.seguimiento = {}
-                print("No se pudo calcular el seguimiento del presupuesto. Método no disponible.")
-                
-        except Exception as e:
-            print(f"Error al inicializar datos de presupuesto: {e}")
-            # Valores predeterminados para evitar errores
-            self.presupuesto_actual = {}
-            self.gastos_recientes = []
-            self.ingresos_recientes = []
-            self.ingresos_predichos = 0
-            self.seguimiento = {}
-    
-    def centrar_ventana(self):
-        """Centra la ventana en la pantalla"""
-        self.update_idletasks()
-        ancho = self.winfo_width()
-        alto = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
-        y = (self.winfo_screenheight() // 2) - (alto // 2)
-        self.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
         
-    def agregar_botones_ventana(self):
-        """Agrega botones para controlar la ventana"""
-        botones_frame = tk.Frame(self, bg=self.controller.colores['claro']['panel'])
-        botones_frame.pack(fill=tk.X, anchor='ne', padx=5, pady=5)
+        # Mostrar la ventana con fade-in
+        self.after(100, lambda: self.attributes('-alpha', 1.0))
         
-        # Botón de maximizar
-        self.btn_maximizar = tk.Button(
-            botones_frame,
-            text="⬜",
-            command=self.toggle_maximizar,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['acento_oscuro'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        self.btn_maximizar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(self.btn_maximizar)
-        
-        # Botón de cerrar
-        btn_cerrar = tk.Button(
-            botones_frame,
-            text="✖",
-            command=self.destroy,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['alerta'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        btn_cerrar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(btn_cerrar)
+        # Forzar actualización inicial
+        self.after(200, self.actualizar_contenido)
     
-    def toggle_maximizar(self):
-        """Alterna entre estado maximizado y normal"""
+    def _toggle_maximize(self, event=None):
+        """Alterna entre estado normal y maximizado con doble clic"""
+        # Solo procesar eventos en la barra de título
+        if event and event.y > 30:  # Aproximadamente el tamaño de una barra de título
+            return
+            
         if self.state() == 'zoomed':
             self.state('normal')
-            self.btn_maximizar.config(text="⬜")
         else:
             self.state('zoomed')
-            self.btn_maximizar.config(text="❐")
+        
+        return "break"  # Prevenir propagación del evento
     
     def ajustar_interfaz(self, event=None):
         """Ajusta la interfaz cuando cambia el tamaño de la ventana"""
         # Evitar procesamiento durante actualización
         if hasattr(self, 'actualizando_interfaz') and self.actualizando_interfaz:
             return
-            
+                
         # Solo responder a cambios de tamaño de la ventana principal
         if event and event.widget != self:
             return
-            
+                
         self.actualizando_interfaz = True
         
         # Verificar si resumen_frame existe antes de intentar actualizar
@@ -181,6 +93,71 @@ class PresupuestoFrame(tk.Toplevel):
         
         self.actualizando_interfaz = False
     
+    def centrar_ventana(self):
+        """Centra la ventana en la pantalla"""
+        self.update_idletasks()
+        ancho = self.winfo_width()
+        alto = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
+        y = (self.winfo_screenheight() // 2) - (alto // 2)
+        self.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
+        
+        # Mostrar la ventana una vez configurada
+        self.deiconify()
+            
+    def inicializar_datos(self):
+        """Inicializa los datos necesarios para el presupuesto"""
+        try:
+            # Inicializar el sistema de presupuesto
+            self.sistema_presupuesto = PresupuestoInteligente()
+            
+            # Cargar datos históricos
+            from model.data_manager import cargar_datos
+            self.gastos_recientes = cargar_datos("gastos") or []
+            self.ingresos_recientes = cargar_datos("ingresos") or []
+            
+            # Definir métodos esperados
+            self.metodos_presupuesto = {
+                'obtener_presupuesto_actual': True,
+                'generar_presupuesto_sugerido': True,
+                'predecir_ingresos': True,
+                'seguimiento_presupuesto': True
+            }
+            
+            # Verificar existencia de métodos
+            for metodo in self.metodos_presupuesto:
+                self.metodos_presupuesto[metodo] = hasattr(self.sistema_presupuesto, metodo) and callable(getattr(self.sistema_presupuesto, metodo))
+            
+            # Obtener presupuesto actual usando un enfoque más elegante
+            self.presupuesto_actual = {}
+            if self.metodos_presupuesto['obtener_presupuesto_actual']:
+                self.presupuesto_actual = self.sistema_presupuesto.obtener_presupuesto_actual() or {}
+            
+            if not self.presupuesto_actual and self.metodos_presupuesto['generar_presupuesto_sugerido']:
+                self.presupuesto_actual = self.sistema_presupuesto.generar_presupuesto_sugerido() or {}
+            
+            # Ingresos predichos
+            self.ingresos_predichos = 0
+            if self.metodos_presupuesto['predecir_ingresos']:
+                self.ingresos_predichos = self.sistema_presupuesto.predecir_ingresos() or 0
+            elif self.ingresos_recientes:
+                # Cálculo alternativo
+                self.ingresos_predichos = sum(i.get('monto', 0) for i in self.ingresos_recientes) / len(self.ingresos_recientes)
+            
+            # Seguimiento de presupuesto
+            self.seguimiento = {}
+            if self.metodos_presupuesto['seguimiento_presupuesto']:
+                self.seguimiento = self.sistema_presupuesto.seguimiento_presupuesto(self.gastos_recientes) or {}
+                
+        except Exception as e:
+            print(f"Error al inicializar datos de presupuesto: {e}")
+            # Valores predeterminados para evitar errores
+            self.presupuesto_actual = {}
+            self.gastos_recientes = []
+            self.ingresos_recientes = []
+            self.ingresos_predichos = 0
+            self.seguimiento = {}
+        
     def crear_interfaz(self):
         """Crea la interfaz del presupuesto"""
         # Evitar llamadas recursivas
@@ -474,6 +451,9 @@ class PresupuestoFrame(tk.Toplevel):
         for widget in self.grafico_presupuesto_frame.winfo_children():
             widget.destroy()
         
+        # Liberar memoria de figuras previas
+        plt.close('all')
+        
         # Si no hay datos, mostrar mensaje
         if not self.presupuesto_actual:
             tk.Label(
@@ -674,7 +654,6 @@ class PresupuestoFrame(tk.Toplevel):
             # Calcular ancho de la barra de progreso
             porcentaje = min(datos['porcentaje_utilizado'], 100)  # Limitar al 100% para la visualización
             ancho_barra = (porcentaje / 100) * 400
-            
             # Color de la barra según estado
             color_barra = color_estado
             

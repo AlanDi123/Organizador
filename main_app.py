@@ -149,6 +149,9 @@ def main():
                 ctypes.windll.user32.SetWindowLongW(hwnd, -16, style)
         except Exception as e:
             print(f"Aviso: No se pudo configurar el estilo de maximizar: {e}")
+        
+        # Deshabilitar temporalmente la ventana durante la inicialización
+        root.withdraw()
             
         # Inicializar el controlador de la aplicación
         app = AppController(root)
@@ -159,6 +162,12 @@ def main():
                 root.destroy()
         
         root.protocol("WM_DELETE_WINDOW", on_closing)
+        
+        # Mostrar la ventana ya configurada
+        root.deiconify()
+        
+        # Forzar actualización inicial completa
+        root.update_idletasks()
         
         # Iniciar la aplicación
         root.mainloop()
@@ -174,7 +183,7 @@ def main():
             print("No se pudo mostrar ventana de error.")
             
         input("Presione Enter para salir...")
-
+        
 # Punto de entrada principal
 if __name__ == "__main__":
     main()

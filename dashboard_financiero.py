@@ -1,4 +1,5 @@
 # ui/dashboard_financiero.py
+import sys
 import tkinter as tk
 from tkinter import ttk
 import matplotlib.pyplot as plt
@@ -16,37 +17,88 @@ class DashboardFinanciero(tk.Toplevel):
         super().__init__(parent)
         self.controller = controller
         self.title("Dashboard Financiero IA")
+        
+        # Configurar para comportamiento nativo de ventana
+        self.resizable(True, True)
+        self.attributes('-alpha', 0.0)  # Ocultar temporalmente
+        
+        # Establecer como ventana normal, no de utilidad
+        if hasattr(self, 'attributes'):
+            self.attributes('-toolwindow', False)
+        
+        # Configurar tamaño y propiedades
         self.geometry("900x650")
         self.configure(bg=controller.colores['claro']['panel'])
+        self.minsize(600, 450)
         
-        # Inicializar banderas de control
-        self.interfaz_creada = False
-        self.actualizando_interfaz = False
-        
-        # Permitir redimensionar la ventana
-        self.resizable(True, True)
-        
-        # Permitir maximizar/minimizar
-        self.minsize(600, 450)  # Tamaño mínimo
-        
-        # Centrar la ventana
-        self.centrar_ventana()
-        
-        # Agregar botón de maximizar en la parte superior
-        self.agregar_botones_ventana()
-        
-        # Hacer la ventana modal
-        self.transient(parent)
-        self.grab_set()
+        # Vincular doble clic en la barra de título para maximizar
+        self.bind('<Double-Button-1>', self._toggle_maximize)
         
         # Inicializar datos
+        self.interfaz_creada = False
+        self.actualizando_interfaz = False
         self.cargar_datos()
         
         # Crear interfaz
         self.crear_interfaz()
         
+        # Centrar la ventana
+        self.centrar_ventana()
+        
+        # Hacer la ventana modal
+        self.transient(parent)
+        self.grab_set()
+        
         # Vincular evento de redimensionamiento
         self.bind("<Configure>", self.ajustar_interfaz)
+        
+        # Mostrar la ventana con fade-in y forzar actualización inicial
+        self.after(100, lambda: self.attributes('-alpha', 1.0))
+        self.after(200, self.actualizar_dashboard)
+    
+    def _toggle_maximize(self, event=None):
+        """Alterna entre estado normal y maximizado con doble clic"""
+        # Solo procesar eventos en la barra de título
+        if event and event.y > 30:  # Aproximadamente el tamaño de una barra de título
+            return
+            
+        if self.state() == 'zoomed':
+            self.state('normal')
+        else:
+            self.state('zoomed')
+        
+        return "break"  # Prevenir propagación del evento
+    
+    def ajustar_interfaz(self, event=None):
+        """Ajusta la interfaz cuando cambia el tamaño de la ventana"""
+        # Evitar procesamiento durante actualización
+        if hasattr(self, 'actualizando_interfaz') and self.actualizando_interfaz:
+            return
+                
+        # Solo responder a cambios de tamaño de la ventana principal
+        if event and event.widget != self:
+            return
+                
+        self.actualizando_interfaz = True
+        
+        # Reconfigurar el tamaño de los gráficos según el nuevo tamaño de ventana
+        if hasattr(self, 'grafico_frame'):
+            # Actualizar los gráficos para que se ajusten al nuevo tamaño
+            self.actualizar_graficos()
+        
+        self.actualizando_interfaz = False
+    
+    def centrar_ventana(self):
+        """Centra la ventana en la pantalla"""
+        self.update_idletasks()
+        ancho = self.winfo_width()
+        alto = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
+        y = (self.winfo_screenheight() // 2) - (alto // 2)
+        self.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
+        
+        # Mostrar la ventana una vez configurada
+        self.deiconify()
     
     def cargar_datos(self):
         """Carga los datos necesarios para el dashboard"""
@@ -74,80 +126,6 @@ class DashboardFinanciero(tk.Toplevel):
             self.total_gastos = 0
             self.total_ingresos = 0
             self.balance = 0
-    
-    def centrar_ventana(self):
-        """Centra la ventana en la pantalla"""
-        self.update_idletasks()
-        ancho = self.winfo_width()
-        alto = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
-        y = (self.winfo_screenheight() // 2) - (alto // 2)
-        self.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
-    
-    def agregar_botones_ventana(self):
-        """Agrega botones para controlar la ventana"""
-        botones_frame = tk.Frame(self, bg=self.controller.colores['claro']['panel'])
-        botones_frame.pack(fill=tk.X, anchor='ne', padx=5, pady=5)
-        
-        # Botón de maximizar
-        self.btn_maximizar = tk.Button(
-            botones_frame,
-            text="⬜",
-            command=self.toggle_maximizar,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['acento_oscuro'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        self.btn_maximizar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(self.btn_maximizar)
-        
-        # Botón de cerrar
-        btn_cerrar = tk.Button(
-            botones_frame,
-            text="✖",
-            command=self.destroy,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['alerta'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        btn_cerrar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(btn_cerrar)
-    
-    def toggle_maximizar(self):
-        """Alterna entre estado maximizado y normal"""
-        if self.state() == 'zoomed':
-            self.state('normal')
-            self.btn_maximizar.config(text="⬜")
-        else:
-            self.state('zoomed')
-            self.btn_maximizar.config(text="❐")
-    
-    def ajustar_interfaz(self, event=None):
-        """Ajusta la interfaz cuando cambia el tamaño de la ventana"""
-        # Evitar procesamiento durante actualización
-        if hasattr(self, 'actualizando_interfaz') and self.actualizando_interfaz:
-            return
-            
-        # Solo responder a cambios de tamaño de la ventana principal
-        if event and event.widget != self:
-            return
-            
-        self.actualizando_interfaz = True
-        
-        # Reconfigurar el tamaño de los gráficos según el nuevo tamaño de ventana
-        if hasattr(self, 'grafico_frame'):
-            # Actualizar los gráficos para que se ajusten al nuevo tamaño
-            self.actualizar_graficos()
-        
-        self.actualizando_interfaz = False
     
     def crear_interfaz(self):
         """Crea la interfaz del dashboard"""
@@ -285,6 +263,9 @@ class DashboardFinanciero(tk.Toplevel):
     
     def crear_grafico_tendencia(self, ancho=400, alto=300):
         """Crea un gráfico de tendencia según el tamaño especificado"""
+        # Cerrar figuras anteriores para evitar fugas de memoria
+        plt.close('all')
+        
         # Implementación según las necesidades
         fig, ax = plt.subplots(figsize=(ancho/100, alto/100), dpi=100)
         # Configuración adicional del gráfico...
@@ -311,34 +292,54 @@ class DashboardFinanciero(tk.Toplevel):
             
         self.actualizando_interfaz = True
         
-        # Filtrar datos según el periodo seleccionado
-        periodo = self.periodo_var.get()
-        fecha_inicio = None
+        try:
+            # Filtrar datos según el periodo seleccionado
+            periodo = self.periodo_var.get()
+            fecha_inicio = None
+            
+            if periodo == "Último mes":
+                fecha_inicio = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            elif periodo == "Últimos 3 meses":
+                fecha_inicio = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+            elif periodo == "Último año":
+                fecha_inicio = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            
+            # Filtrar datos con validación de formato de fecha
+            if fecha_inicio:
+                gastos_filtrados = []
+                for g in self.gastos:
+                    try:
+                        # Asegurar que la fecha tenga el formato correcto
+                        if 'fecha' in g and g['fecha'] and g['fecha'] >= fecha_inicio:
+                            gastos_filtrados.append(g)
+                    except (TypeError, ValueError):
+                        # Ignorar datos con formato de fecha inválido
+                        continue
+            else:
+                gastos_filtrados = self.gastos
+                
+            if fecha_inicio:
+                ingresos_filtrados = []
+                for i in self.ingresos:
+                    try:
+                        if 'fecha' in i and i['fecha'] and i['fecha'] >= fecha_inicio:
+                            ingresos_filtrados.append(i)
+                    except (TypeError, ValueError):
+                        continue
+            else:
+                ingresos_filtrados = self.ingresos
+            
+            # Actualizar componentes
+            self.actualizar_kpis(gastos_filtrados, ingresos_filtrados)
+            self.actualizar_grafico_izquierdo(gastos_filtrados)
+            self.actualizar_grafico_derecho(gastos_filtrados, ingresos_filtrados)
+            self.actualizar_anomalias(gastos_filtrados)
+            self.actualizar_recomendaciones(gastos_filtrados, ingresos_filtrados)
         
-        if periodo == "Último mes":
-            fecha_inicio = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        elif periodo == "Últimos 3 meses":
-            fecha_inicio = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-        elif periodo == "Último año":
-            fecha_inicio = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        
-        # Filtrar datos
-        gastos_filtrados = self.gastos if fecha_inicio is None else [
-            g for g in self.gastos if g['fecha'] >= fecha_inicio
-        ]
-        
-        ingresos_filtrados = self.ingresos if fecha_inicio is None else [
-            i for i in self.ingresos if i['fecha'] >= fecha_inicio
-        ]
-        
-        # Actualizar componentes
-        self.actualizar_kpis(gastos_filtrados, ingresos_filtrados)
-        self.actualizar_grafico_izquierdo(gastos_filtrados)
-        self.actualizar_grafico_derecho(gastos_filtrados, ingresos_filtrados)
-        self.actualizar_anomalias(gastos_filtrados)
-        self.actualizar_recomendaciones(gastos_filtrados, ingresos_filtrados)
-        
-        self.actualizando_interfaz = False
+        except Exception as e:
+            print(f"Error al actualizar dashboard: {e}")
+        finally:
+            self.actualizando_interfaz = False
     
     def actualizar_kpis(self, gastos, ingresos):
         """Actualiza los KPIs financieros principales"""
@@ -429,6 +430,9 @@ class DashboardFinanciero(tk.Toplevel):
         for widget in self.grafico_izquierdo.winfo_children():
             widget.destroy()
         
+        # Cerrar figuras anteriores para evitar fugas de memoria
+        plt.close('all')
+        
         # Título
         tk.Label(
             self.grafico_izquierdo,
@@ -506,6 +510,9 @@ class DashboardFinanciero(tk.Toplevel):
         # Limpiar frame actual
         for widget in self.grafico_derecho.winfo_children():
             widget.destroy()
+        
+        # Cerrar figuras anteriores para evitar fugas de memoria
+        plt.close('all')
         
         # Título
         tk.Label(

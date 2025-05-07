@@ -1,4 +1,5 @@
 # ui/dolar_widget_realtime.py
+import sys
 import tkinter as tk
 from tkinter import ttk
 import requests
@@ -7,34 +8,36 @@ import time
 from datetime import datetime
 import threading
 
+# URLs de las APIs como constantes
+API_BLUELYTICS = 'https://api.bluelytics.com.ar/v2/latest'
+API_DOLARAPI = 'https://dolarapi.com/v1/dolares'
+
 class DolarWidgetRealtime(tk.Toplevel):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
         self.title("Cotización del Dólar")
-        self.geometry("320x350")
-        self.configure(bg=controller.colores['claro']['panel'])
         
-        # Inicializar banderas de control
+        # Configurar para comportamiento nativo de ventana
+        self.resizable(True, True)
+        self.attributes('-alpha', 0.0)  # Ocultar temporalmente
+        
+        # Establecer como ventana normal, no de utilidad
+        if hasattr(self, 'attributes'):
+            self.attributes('-toolwindow', False)
+        
+        # Configurar la ventana
+        self.geometry("380x400")  # Aumentar el tamaño para evitar que se corte
+        self.configure(bg=controller.colores['claro']['panel'])
+        self.minsize(380, 400)
+        
+        # Vincular doble clic en la barra de título para maximizar
+        self.bind('<Double-Button-1>', self._toggle_maximize)
+        
+        # Inicializar datos
         self.interfaz_creada = False
         self.actualizando_interfaz = False
-        
-        # Permitir redimensionar la ventana (cambiar a True)
-        self.resizable(True, True)
-        
-        # Permitir maximizar/minimizar
-        self.minsize(320, 350)  # Tamaño mínimo para que no se deformen los elementos
-        
-        # Centrar la ventana
-        self.centrar_ventana()
-        
-        # Agregar botón de maximizar en la parte superior
-        self.agregar_botones_ventana()
-        
-        # No permitir que sea una ventana modal para que se pueda seguir usando la app
-        self.transient(parent)
-        
-        # Datos iniciales
+        self.ultimo_intento = 0
         self.datos_dolar = {
             "oficial": {"compra": "---", "venta": "---"},
             "blue": {"compra": "---", "venta": "---"},
@@ -43,17 +46,59 @@ class DolarWidgetRealtime(tk.Toplevel):
             "ccl": {"compra": "---", "venta": "---"}
         }
         
-        # Inicializar tiempo para evitar peticiones muy seguidas
-        self.ultimo_intento = 0
-        
         # Crear interfaz
         self.crear_interfaz()
+        
+        # Centrar la ventana
+        self.centrar_ventana()
+        
+        # No hacer la ventana modal para permitir usar la app mientras está abierta
+        self.transient(parent)
         
         # Vincular evento de redimensionamiento
         self.bind("<Configure>", self.ajustar_interfaz)
         
-        # Iniciar la actualización de datos
-        self.actualizar_timer()
+        # Mostrar la ventana con fade-in
+        self.after(100, lambda: self.attributes('-alpha', 1.0))
+        
+        # Forzar actualización inicial
+        self.after(200, self.obtener_datos_dolar)
+    
+    def _toggle_maximize(self, event=None):
+        """Alterna entre estado normal y maximizado con doble clic"""
+        # Solo procesar eventos en la barra de título
+        if event and event.y > 30:  # Aproximadamente el tamaño de una barra de título
+            return
+            
+        if self.state() == 'zoomed':
+            self.state('normal')
+        else:
+            self.state('zoomed')
+        
+        return "break"  # Prevenir propagación del evento
+    
+    def ajustar_interfaz(self, event=None):
+        """Ajusta la interfaz cuando cambia el tamaño de la ventana"""
+        # Evitar procesamiento durante actualización
+        if hasattr(self, 'actualizando_interfaz') and self.actualizando_interfaz:
+            return
+                
+        # Solo responder a cambios de tamaño de la ventana principal
+        if event and event.widget != self:
+            return
+                
+        self.actualizando_interfaz = True
+        
+        # Verificar si tipos_frame existe antes de intentar actualizar
+        if hasattr(self, 'tipos_frame'):
+            # Actualizar la tabla de cotizaciones para ajustarla al nuevo tamaño
+            self.crear_tabla_cotizaciones()
+        else:
+            # Si no existe, verificar si la interfaz se ha creado
+            if not self.interfaz_creada:
+                self.crear_interfaz()
+        
+        self.actualizando_interfaz = False
     
     def centrar_ventana(self):
         """Centra la ventana en la pantalla"""
@@ -63,53 +108,10 @@ class DolarWidgetRealtime(tk.Toplevel):
         x = (self.winfo_screenwidth() // 2) - (ancho // 2)
         y = (self.winfo_screenheight() // 2) - (alto // 2)
         self.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
-    
-    def agregar_botones_ventana(self):
-        """Agrega botones para controlar la ventana"""
-        botones_frame = tk.Frame(self, bg=self.controller.colores['claro']['panel'])
-        botones_frame.pack(fill=tk.X, anchor='ne', padx=5, pady=5)
         
-        # Botón de maximizar
-        self.btn_maximizar = tk.Button(
-            botones_frame,
-            text="⬜",
-            command=self.toggle_maximizar,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['acento_oscuro'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        self.btn_maximizar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(self.btn_maximizar)
-        
-        # Botón de cerrar
-        btn_cerrar = tk.Button(
-            botones_frame,
-            text="✖",
-            command=self.destroy,
-            font=("Comic Sans MS", 8),
-            bg=self.controller.colores['claro']['alerta'],
-            fg="white",
-            relief=tk.FLAT,
-            cursor="hand2",
-            width=2,
-            height=1
-        )
-        btn_cerrar.pack(side=tk.RIGHT, padx=2)
-        self.controller.redondear_widget(btn_cerrar)
+        # Mostrar la ventana una vez configurada
+        self.deiconify()
     
-    def toggle_maximizar(self):
-        """Alterna entre estado maximizado y normal"""
-        if self.state() == 'zoomed':
-            self.state('normal')
-            self.btn_maximizar.config(text="⬜")
-        else:
-            self.state('zoomed')
-            self.btn_maximizar.config(text="❐")
-
     def crear_interfaz(self):
         """Crea la interfaz del widget de dólar"""
         # Evitar llamadas recursivas
@@ -186,33 +188,7 @@ class DolarWidgetRealtime(tk.Toplevel):
         )
         self.lbl_actualizacion.pack(pady=(10, 0), anchor='e')
         
-        # Iniciar la actualización de datos
-        self.obtener_datos_dolar()
-        
         self.interfaz_creada = True
-        self.actualizando_interfaz = False
-
-    def ajustar_interfaz(self, event=None):
-        """Ajusta la interfaz cuando cambia el tamaño de la ventana"""
-        # Evitar procesamiento durante actualización
-        if hasattr(self, 'actualizando_interfaz') and self.actualizando_interfaz:
-            return
-            
-        # Solo responder a cambios de tamaño de la ventana principal
-        if event and event.widget != self:
-            return
-            
-        self.actualizando_interfaz = True
-        
-        # Verificar si tipos_frame existe
-        if hasattr(self, 'tipos_frame'):
-            # Actualizar la tabla de cotizaciones para ajustarla al nuevo tamaño
-            self.crear_tabla_cotizaciones()
-        else:
-            # Si no existe, es necesario crear la interfaz
-            if not self.interfaz_creada:
-                self.crear_interfaz()
-        
         self.actualizando_interfaz = False
     
     def crear_tabla_cotizaciones(self):
@@ -312,101 +288,81 @@ class DolarWidgetRealtime(tk.Toplevel):
     
     def obtener_datos_dolar(self):
         """Obtiene los datos actualizados del dólar"""
+        # Verificar si hay demasiadas solicitudes recientes
+        tiempo_actual = time.time()
+        if tiempo_actual - self.ultimo_intento < 5:  # Evitar peticiones muy seguidas
+            return
+        
+        self.ultimo_intento = tiempo_actual
+        
+        # Usar threading para evitar bloquear la interfaz
+        threading.Thread(target=self._obtener_datos_en_hilo, daemon=True).start()
+    
+    def _obtener_datos_en_hilo(self):
+        """Obtiene datos en un hilo separado"""
         try:
-            # Usar tiempo actual para evitar caché
-            tiempo_actual = time.time()
-            if tiempo_actual - self.ultimo_intento < 5:  # Evitar peticiones muy seguidas
-                return
-            
-            self.ultimo_intento = tiempo_actual
-            
-            # Obtener datos de API de dólar 
-            # Intentar primera fuente
-            response = None
+            # Obtener datos de la primera API
+            datos_obtenidos = False
             try:
-                response = requests.get('https://api.bluelytics.com.ar/v2/latest', timeout=5)
-            except:
-                pass
+                response = requests.get(API_BLUELYTICS, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    # Actualizar datos
+                    self.datos_dolar["oficial"]["compra"] = str(data["oficial"]["value_buy"])
+                    self.datos_dolar["oficial"]["venta"] = str(data["oficial"]["value_sell"])
+                    self.datos_dolar["blue"]["compra"] = str(data["blue"]["value_buy"])
+                    self.datos_dolar["blue"]["venta"] = str(data["blue"]["value_sell"])
+                    
+                    # Calcular valores aproximados para los otros tipos
+                    valor_oficial = float(data["oficial"]["value_sell"])
+                    
+                    # Estos son aproximados basados en patrones típicos
+                    self.datos_dolar["bolsa"]["compra"] = str(round(valor_oficial * 0.98, 2))
+                    self.datos_dolar["bolsa"]["venta"] = str(round(valor_oficial * 1.03, 2))
+                    self.datos_dolar["ccl"]["compra"] = str(round(valor_oficial * 0.99, 2))
+                    self.datos_dolar["ccl"]["venta"] = str(round(valor_oficial * 1.04, 2))
+                    self.datos_dolar["turista"]["compra"] = "---"
+                    self.datos_dolar["turista"]["venta"] = str(round(valor_oficial * 1.30, 2))
+                    datos_obtenidos = True
+            except requests.exceptions.RequestException as e:
+                print(f"Error al conectar con API primaria: {e}")
             
-            # Si la primera fuente funciona
-            if response and response.status_code == 200:
-                data = response.json()
+            # Intentar con API alternativa para complementar o sustituir datos
+            try:
+                alt_response = requests.get(API_DOLARAPI, timeout=5)
+                if alt_response.status_code == 200:
+                    alt_data = alt_response.json()
+                    for item in alt_data:
+                        if item.get("casa") == "oficial":
+                            self.datos_dolar["oficial"]["compra"] = str(item.get("compra", self.datos_dolar["oficial"]["compra"]))
+                            self.datos_dolar["oficial"]["venta"] = str(item.get("venta", self.datos_dolar["oficial"]["venta"]))
+                        elif item.get("casa") == "blue":
+                            self.datos_dolar["blue"]["compra"] = str(item.get("compra", self.datos_dolar["blue"]["compra"]))
+                            self.datos_dolar["blue"]["venta"] = str(item.get("venta", self.datos_dolar["blue"]["venta"]))
+                        elif item.get("casa") in ["bolsa", "mep"]:
+                            self.datos_dolar["bolsa"]["compra"] = str(item.get("compra", self.datos_dolar["bolsa"]["compra"]))
+                            self.datos_dolar["bolsa"]["venta"] = str(item.get("venta", self.datos_dolar["bolsa"]["venta"]))
+                        elif item.get("casa") in ["contadoconliqui", "ccl"]:
+                            self.datos_dolar["ccl"]["compra"] = str(item.get("compra", self.datos_dolar["ccl"]["compra"]))
+                            self.datos_dolar["ccl"]["venta"] = str(item.get("venta", self.datos_dolar["ccl"]["venta"]))
+                        elif item.get("casa") in ["turista", "tarjeta"]:
+                            self.datos_dolar["turista"]["compra"] = str(item.get("compra", self.datos_dolar["turista"]["compra"]))
+                            self.datos_dolar["turista"]["venta"] = str(item.get("venta", self.datos_dolar["turista"]["venta"]))
+                    datos_obtenidos = True
+            except requests.exceptions.RequestException as e:
+                print(f"Error al conectar con API alternativa: {e}")
                 
-                # Actualizar datos
-                self.datos_dolar["oficial"]["compra"] = str(data["oficial"]["value_buy"])
-                self.datos_dolar["oficial"]["venta"] = str(data["oficial"]["value_sell"])
-                self.datos_dolar["blue"]["compra"] = str(data["blue"]["value_buy"])
-                self.datos_dolar["blue"]["venta"] = str(data["blue"]["value_sell"])
-                
-                # Calcular valores aproximados para los otros tipos
-                valor_oficial = float(data["oficial"]["value_sell"])
-                
-                # Estos son aproximados basados en patrones típicos
-                self.datos_dolar["bolsa"]["compra"] = str(round(valor_oficial * 0.98, 2))
-                self.datos_dolar["bolsa"]["venta"] = str(round(valor_oficial * 1.03, 2))
-                self.datos_dolar["ccl"]["compra"] = str(round(valor_oficial * 0.99, 2))
-                self.datos_dolar["ccl"]["venta"] = str(round(valor_oficial * 1.04, 2))
-                self.datos_dolar["turista"]["compra"] = "---"
-                self.datos_dolar["turista"]["venta"] = str(round(valor_oficial * 1.30, 2))
-                
-                # Intentar otra fuente para valores más precisos
-                try:
-                    alt_response = requests.get('https://dolarapi.com/v1/dolares', timeout=5)
-                    if alt_response.status_code == 200:
-                        alt_data = alt_response.json()
-                        for item in alt_data:
-                            if item["casa"] == "oficial":
-                                self.datos_dolar["oficial"]["compra"] = str(item["compra"])
-                                self.datos_dolar["oficial"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "blue":
-                                self.datos_dolar["blue"]["compra"] = str(item["compra"])
-                                self.datos_dolar["blue"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "bolsa" or item["casa"] == "mep":
-                                self.datos_dolar["bolsa"]["compra"] = str(item["compra"])
-                                self.datos_dolar["bolsa"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "contadoconliqui" or item["casa"] == "ccl":
-                                self.datos_dolar["ccl"]["compra"] = str(item["compra"])
-                                self.datos_dolar["ccl"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "turista" or item["casa"] == "tarjeta":
-                                self.datos_dolar["turista"]["compra"] = str(item["compra"])
-                                self.datos_dolar["turista"]["venta"] = str(item["venta"])
-                except Exception as e:
-                    # Si falla, ya tenemos datos básicos de la primera fuente
-                    print(f"Error al obtener datos de fuente alternativa: {e}")
-            
+            # Actualizar la interfaz solo si obtuvimos datos
+            if datos_obtenidos:
+                # Usar after para actualizar en el hilo principal
+                self.after(0, self.actualizar_interfaz_dolar)
             else:
-                # Intentar con otra API alternativa
-                try:
-                    alt_response = requests.get('https://dolarapi.com/v1/dolares', timeout=5)
-                    if alt_response.status_code == 200:
-                        alt_data = alt_response.json()
-                        for item in alt_data:
-                            if item["casa"] == "oficial":
-                                self.datos_dolar["oficial"]["compra"] = str(item["compra"])
-                                self.datos_dolar["oficial"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "blue":
-                                self.datos_dolar["blue"]["compra"] = str(item["compra"])
-                                self.datos_dolar["blue"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "bolsa" or item["casa"] == "mep":
-                                self.datos_dolar["bolsa"]["compra"] = str(item["compra"])
-                                self.datos_dolar["bolsa"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "contadoconliqui" or item["casa"] == "ccl":
-                                self.datos_dolar["ccl"]["compra"] = str(item["compra"])
-                                self.datos_dolar["ccl"]["venta"] = str(item["venta"])
-                            elif item["casa"] == "turista" or item["casa"] == "tarjeta":
-                                self.datos_dolar["turista"]["compra"] = str(item["compra"])
-                                self.datos_dolar["turista"]["venta"] = str(item["venta"])
-                except Exception as e:
-                    # Si fallan todas las fuentes, dejamos los valores por defecto
-                    print(f"Error al obtener datos de todas las fuentes: {e}")
-            
-            # Actualizar la interfaz
-            self.actualizar_interfaz_dolar()
-            
+                self.after(0, lambda: self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...") if hasattr(self, 'lbl_actualizacion') else None)
+        
         except Exception as e:
-            print(f"Error al obtener datos del dólar: {e}")
-            if hasattr(self, 'lbl_actualizacion'):
-                self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...")
+            print(f"Error al procesar datos del dólar: {e}")
+            # Actualizar label de error en hilo principal
+            self.after(0, lambda: self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...") if hasattr(self, 'lbl_actualizacion') else None)
     
     def actualizar_interfaz_dolar(self):
         """Actualiza todos los elementos de la interfaz con los datos más recientes"""
