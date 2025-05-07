@@ -127,6 +127,10 @@ class AppController:
     
         # Crear botón para el widget del dólar
         self.crear_boton_dolar()
+        
+        # Forzar actualización de UI después de inicialización
+        self.root.update_idletasks()
+        
     def cargar_imagen_fondo(self):
         """Carga una imagen de fondo con gatitos"""
         try:
@@ -182,10 +186,9 @@ class AppController:
                     self.bg_canvas.place(x=0, y=0, relwidth=1, relheight=1)
                 
                 # Actualizar el canvas después de colocarlo
-                self.root.update()
+                self.root.update_idletasks()
                 
                 # Manera correcta de asegurar que el canvas está detrás de todo
-                # En lugar de usar lower() que requiere parámetros específicos
                 for widget in self.root.winfo_children():
                     if widget != self.bg_canvas:
                         widget.lift()
@@ -206,6 +209,9 @@ class AppController:
                 if hasattr(self, 'bg_canvas') and self.bg_canvas:
                     self.bg_canvas.delete("all")
                     self.bg_canvas.configure(bg=color)
+                    
+            # Forzar actualización de la interfaz
+            self.root.update_idletasks()
         except Exception as e:
             print(f"Error al aplicar fondo: {e}")
             # Fallback a color sólido si hay error
@@ -308,6 +314,7 @@ class AppController:
         )
         self.btn_mostrar_dolar.pack(side=tk.LEFT, padx=10)
         self.redondear_widget(self.btn_mostrar_dolar)
+        
     def mostrar_widget_dolar(self):
         """Muestra el widget de cotización del dólar"""
         try:
@@ -415,6 +422,9 @@ class AppController:
             # Asegurar que los widgets principales permanezcan visibles
             if hasattr(self, 'main_frame'):
                 self.main_frame.lift()
+            
+            # Forzar actualización de la interfaz
+            self.root.update_idletasks()
         
         except Exception as e:
             print(f"Error al cambiar modo: {e}")
@@ -439,12 +449,14 @@ class AppController:
             ventana.configure(bg=colores['panel'])
             
             # Centrar la ventana
+            ventana.withdraw()  # Ocultar ventana mientras se configura
             ventana.update_idletasks()
             ancho = ventana.winfo_width()
             alto = ventana.winfo_height()
             x = (ventana.winfo_screenwidth() // 2) - (ancho // 2)
             y = (ventana.winfo_screenheight() // 2) - (alto // 2)
             ventana.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
+            ventana.deiconify()  # Mostrar ventana ya configurada
             
             # Título de la ventana
             tk.Label(
@@ -622,6 +634,13 @@ class AppController:
             btn_cerrar.pack(pady=(5, 20))
             self.redondear_widget(btn_cerrar)
             
+            # Forzar actualización de la interfaz
+            ventana.update_idletasks()
+            
+            # Hacer la ventana modal
+            ventana.transient(self.root)
+            ventana.grab_set()
+            
         except Exception as e:
             print(f"Error al mostrar balance: {e}")
             messagebox.showerror("Error", f"No se pudo mostrar el balance: {e}")
@@ -683,9 +702,8 @@ class AppController:
             dialogo.configure(bg=colores['panel'])
             dialogo.resizable(False, False)
             
-            # Hacer que la ventana sea modal
-            dialogo.transient(self.root)
-            dialogo.grab_set()
+            # Ocultar ventana mientras se configura
+            dialogo.withdraw()
             
             # Centrar la ventana
             dialogo.update_idletasks()
@@ -694,6 +712,9 @@ class AppController:
             x = (dialogo.winfo_screenwidth() // 2) - (ancho // 2)
             y = (dialogo.winfo_screenheight() // 2) - (alto // 2)
             dialogo.geometry('{}x{}+{}+{}'.format(ancho, alto, x, y))
+            
+            # Mostrar ventana ya configurada
+            dialogo.deiconify()
             
             # Icono de advertencia
             tk.Label(
@@ -809,6 +830,13 @@ class AppController:
             btn_borrar.pack(side=tk.LEFT, padx=10)
             self.redondear_widget(btn_borrar)
             
+            # Hacer la ventana modal
+            dialogo.transient(self.root)
+            dialogo.grab_set()
+            
+            # Forzar actualización de la interfaz
+            dialogo.update_idletasks()
+            
         except Exception as e:
             print(f"Error al mostrar diálogo de confirmación: {e}")
             messagebox.showerror("Error", f"No se pudo mostrar la ventana de confirmación: {e}")
@@ -868,11 +896,3 @@ class AppController:
         )
         self.btn_mostrar_dashboard.pack(side=tk.LEFT, padx=10)
         self.redondear_widget(self.btn_mostrar_dashboard)
-
-    def mostrar_dashboard_ai(self):
-        """Muestra el dashboard financiero inteligente"""
-        try:
-            dashboard = DashboardFinanciero(self.root, self)
-        except Exception as e:
-            print(f"Error al mostrar dashboard: {e}")
-            messagebox.showerror("Error", f"No se pudo abrir el dashboard: {e}")
