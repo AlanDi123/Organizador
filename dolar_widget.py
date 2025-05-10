@@ -1,4 +1,4 @@
-# ui/dolar_widget_realtime.py
+# ui/dolar_widget.py
 import sys
 import tkinter as tk
 from tkinter import ttk
@@ -7,6 +7,15 @@ import json
 import time
 from datetime import datetime
 import threading
+import logging
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='dolar_widget.log'
+)
+logger = logging.getLogger('dolar_widget')
 
 # URLs de las APIs como constantes
 API_BLUELYTICS = 'https://api.bluelytics.com.ar/v2/latest'
@@ -27,9 +36,9 @@ class DolarWidgetRealtime(tk.Toplevel):
             self.attributes('-toolwindow', False)
         
         # Configurar la ventana
-        self.geometry("380x400")  # Aumentar el tamaño para evitar que se corte
+        self.state('zoomed')
         self.configure(bg=controller.colores['claro']['panel'])
-        self.minsize(380, 400)
+        self.minsize(1280, 920)
         
         # Vincular doble clic en la barra de título para maximizar
         self.bind('<Double-Button-1>', self._toggle_maximize)
@@ -45,6 +54,8 @@ class DolarWidgetRealtime(tk.Toplevel):
             "turista": {"compra": "---", "venta": "---"},
             "ccl": {"compra": "---", "venta": "---"}
         }
+        self.api_thread = None
+        self.detener_hilo = False
         
         # Crear interfaz
         self.crear_interfaz()
@@ -58,11 +69,24 @@ class DolarWidgetRealtime(tk.Toplevel):
         # Vincular evento de redimensionamiento
         self.bind("<Configure>", self.ajustar_interfaz)
         
+        # Vincular evento de cierre de ventana
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         # Mostrar la ventana con fade-in
         self.after(100, lambda: self.attributes('-alpha', 1.0))
         
         # Forzar actualización inicial
         self.after(200, self.obtener_datos_dolar)
+    
+    def on_closing(self):
+        """Maneja el cierre de la ventana, deteniendo hilos pendientes"""
+        logger.info("Cerrando widget del dólar")
+        self.detener_hilo = True
+        if self.api_thread and self.api_thread.is_alive():
+            logger.info("Esperando que el hilo termine...")
+            self.api_thread.join(timeout=1.0)
+            # No volver a hacer self.api_thread = None
+        self.destroy()
     
     def _toggle_maximize(self, event=None):
         """Alterna entre estado normal y maximizado con doble clic"""
@@ -190,7 +214,7 @@ class DolarWidgetRealtime(tk.Toplevel):
         
         self.interfaz_creada = True
         self.actualizando_interfaz = False
-    
+        
     def crear_tabla_cotizaciones(self):
         """Crea una tabla para mostrar las cotizaciones"""
         # Verificar si tipos_frame existe
@@ -296,14 +320,20 @@ class DolarWidgetRealtime(tk.Toplevel):
         self.ultimo_intento = tiempo_actual
         
         # Usar threading para evitar bloquear la interfaz
-        threading.Thread(target=self._obtener_datos_en_hilo, daemon=True).start()
+        self.detener_hilo = False
+        self.api_thread = threading.Thread(target=self._obtener_datos_en_hilo, daemon=True)
+        self.api_thread.start()
     
     def _obtener_datos_en_hilo(self):
         """Obtiene datos en un hilo separado"""
         try:
+            logger.info("Iniciando obtención de datos del dólar")
             # Obtener datos de la primera API
             datos_obtenidos = False
             try:
+                if self.detener_hilo:
+                    return
+                    
                 response = requests.get(API_BLUELYTICS, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
@@ -324,11 +354,15 @@ class DolarWidgetRealtime(tk.Toplevel):
                     self.datos_dolar["turista"]["compra"] = "---"
                     self.datos_dolar["turista"]["venta"] = str(round(valor_oficial * 1.30, 2))
                     datos_obtenidos = True
+                    logger.info("Datos obtenidos de API primaria")
             except requests.exceptions.RequestException as e:
-                print(f"Error al conectar con API primaria: {e}")
+                logger.error(f"Error al conectar con API primaria: {e}")
             
             # Intentar con API alternativa para complementar o sustituir datos
             try:
+                if self.detener_hilo:
+                    return
+                    
                 alt_response = requests.get(API_DOLARAPI, timeout=5)
                 if alt_response.status_code == 200:
                     alt_data = alt_response.json()
@@ -349,23 +383,28 @@ class DolarWidgetRealtime(tk.Toplevel):
                             self.datos_dolar["turista"]["compra"] = str(item.get("compra", self.datos_dolar["turista"]["compra"]))
                             self.datos_dolar["turista"]["venta"] = str(item.get("venta", self.datos_dolar["turista"]["venta"]))
                     datos_obtenidos = True
+                    logger.info("Datos obtenidos o complementados de API alternativa")
             except requests.exceptions.RequestException as e:
-                print(f"Error al conectar con API alternativa: {e}")
+                logger.error(f"Error al conectar con API alternativa: {e}")
                 
             # Actualizar la interfaz solo si obtuvimos datos
-            if datos_obtenidos:
+            if datos_obtenidos and not self.detener_hilo:
                 # Usar after para actualizar en el hilo principal
                 self.after(0, self.actualizar_interfaz_dolar)
-            else:
+            elif not self.detener_hilo:
                 self.after(0, lambda: self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...") if hasattr(self, 'lbl_actualizacion') else None)
         
         except Exception as e:
-            print(f"Error al procesar datos del dólar: {e}")
+            logger.error(f"Error al procesar datos del dólar: {e}")
             # Actualizar label de error en hilo principal
-            self.after(0, lambda: self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...") if hasattr(self, 'lbl_actualizacion') else None)
+            if not self.detener_hilo:
+                self.after(0, lambda: self.lbl_actualizacion.config(text="Error al actualizar. Reintentando...") if hasattr(self, 'lbl_actualizacion') else None)
     
     def actualizar_interfaz_dolar(self):
         """Actualiza todos los elementos de la interfaz con los datos más recientes"""
+        if self.detener_hilo:
+            return
+            
         # Actualizar los valores en la tabla
         if hasattr(self, 'labels_valores'):
             for tipo in self.datos_dolar:
@@ -392,6 +431,11 @@ class DolarWidgetRealtime(tk.Toplevel):
         self.ultimo_intento = 0
         
         # Iniciar hilo para no bloquear la interfaz
+        self.detener_hilo = True
+        if self.api_thread and self.api_thread.is_alive():
+            self.api_thread.join(timeout=0.5)
+            
+        # Iniciar un nuevo hilo
         threading.Thread(target=self.actualizar_con_delay, daemon=True).start()
     
     def actualizar_con_delay(self):
@@ -406,14 +450,7 @@ class DolarWidgetRealtime(tk.Toplevel):
         """Restaura el estado del botón de actualización"""
         if hasattr(self, 'btn_actualizar'):
             self.btn_actualizar.config(text="🔄 Actualizar ahora", state=tk.NORMAL)
-    
-    def actualizar_timer(self):
-        """Configura un temporizador para actualizar periódicamente los datos"""
-        # Iniciar un hilo para obtener los datos sin bloquear la interfaz
-        threading.Thread(target=self.obtener_datos_dolar, daemon=True).start()
-        
-        # Programar próxima actualización en 10 segundos
-        self.after(10000, self.actualizar_timer)
+
 
 class DolarFloatingWidgetRealtime:
     """Widget flotante para mostrar la cotización del dólar con datos en tiempo real"""

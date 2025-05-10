@@ -1,5 +1,9 @@
+import logging
+import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
+from tkinter import filedialog
+import traceback
 from typing import Self
 from PIL import Image, ImageTk
 import requests
@@ -121,16 +125,247 @@ class AppController:
             print(f"Error durante la inicialización de componentes: {e}")
             messagebox.showerror("Error de inicialización", f"Ocurrió un error: {e}")
 
+
+    
+
         # Crear botones para las funcionalidades de IA
         self.crear_boton_dashboard()
         self.crear_boton_presupuesto()
     
+        # Crear menú principal
+        self.menu_principal = tk.Menu(self.root)
+        self.root.config(menu=self.menu_principal)
+
+        # Menú Archivo
+        self.menu_archivo = tk.Menu(self.menu_principal, tearoff=0)
+        self.menu_principal.add_cascade(label="Archivo", menu=self.menu_archivo)
+
+        # Añadir opción para importar datos
+        self.menu_archivo.add_command(
+            label="Importar datos de versión anterior", 
+            command=self.importar_datos_version_anterior
+        )
+
+        # Añadir otras opciones al menú archivo
+        self.menu_archivo.add_separator()
+        self.menu_archivo.add_command(label="Salir", command=self.root.quit)
+
         # Crear botón para el widget del dólar
         self.crear_boton_dolar()
         
         # Forzar actualización de UI después de inicialización
         self.root.update_idletasks()
+
+    def importar_datos_version_anterior(self):
+        """Muestra un diálogo para importar datos de una versión anterior"""
         
+        # Configurar logger
+        logger = logging.getLogger('app_controller')
+        
+        try:
+            # Importar nuestras funciones
+            from model.db_migration import extract_data_from_old_version, backup_database
+            
+            # Crear nuevo importador simplificado inline
+            def importar_datos_simples(gastos_list, ingresos_list):
+                """Versión simplificada del importador"""
+                import sqlite3
+                from datetime import datetime
+                
+                # Usar conexión directa a la base de datos para evitar problemas de hilos
+                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas.db')
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                gastos_ok = 0
+                ingresos_ok = 0
+                
+                try:
+                    # Iniciar transacción
+                    conn.execute("BEGIN TRANSACTION")
+                    
+                    # Verificar gastos existentes para evitar duplicados EXACTOS
+                    cursor.execute("SELECT id, nombre, fecha, monto FROM gastos")
+                    gastos_existentes = set()
+                    for row in cursor.fetchall():
+                        # Guardamos la combinación nombre, fecha Y monto para detectar duplicados exactos
+                        gastos_existentes.add((row[1], row[2], row[3]))
+                    
+                    # Para ingresos mantenemos la verificación simple
+                    cursor.execute("SELECT id, concepto, fecha FROM ingresos")
+                    ingresos_existentes = {(row[1], row[2]): row[0] for row in cursor.fetchall()}
+                    
+                    # Verificar la estructura actual de las tablas
+                    cursor.execute("PRAGMA table_info(ingresos)")
+                    columnas_ingresos = [row[1] for row in cursor.fetchall()]
+                    print(f"Columnas en tabla ingresos: {columnas_ingresos}")
+                    
+                    # Importar gastos con verificación mejorada
+                    for gasto in gastos_list:
+                        try:
+                            # Extraer valores básicos
+                            nombre = str(gasto[1]) if len(gasto) > 1 else "Gasto importado"
+                            monto = float(gasto[2]) if len(gasto) > 2 and gasto[2] else 0.0
+                            recurrente = int(gasto[3]) if len(gasto) > 3 and gasto[3] else 0
+                            fecha = str(gasto[4]) if len(gasto) > 4 and gasto[4] else datetime.now().strftime("%Y-%m-%d")
+                            
+                            # Omitir gastos con monto cero o nulo
+                            if monto <= 0:
+                                print(f"Omitiendo gasto con monto cero/nulo: {nombre} - {fecha}")
+                                continue
+                            
+                            # VERIFICACIÓN MEJORADA: Solo comprobar duplicados EXACTOS
+                            if (nombre, fecha, monto) in gastos_existentes:
+                                print(f"Gasto duplicado exacto: {nombre} - {fecha} - ${monto:.2f}, omitiendo...")
+                                continue
+                            
+                            # Insertar el gasto
+                            cursor.execute("""
+                                INSERT INTO gastos (nombre, monto, recurrente, fecha, fecha_creacion)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (
+                                nombre, monto, recurrente, fecha, 
+                                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            ))
+                            
+                            gastos_ok += 1
+                        except Exception as e:
+                            print(f"Error al importar gasto: {e}")
+                            continue
+                    
+                    # Importar ingresos (sin cambios)
+                    for ingreso in ingresos_list:
+                        try:
+                            # Extraer valores básicos
+                            concepto = str(ingreso[1]) if len(ingreso) > 1 else "Ingreso importado"
+                            monto = float(ingreso[2]) if len(ingreso) > 2 and ingreso[2] else 0.0
+                            fecha = str(ingreso[3]) if len(ingreso) > 3 and ingreso[3] else datetime.now().strftime("%Y-%m-%d")
+                            
+                            # Omitir ingresos con monto cero o nulo
+                            if monto <= 0:
+                                print(f"Omitiendo ingreso con monto cero/nulo: {concepto} - {fecha}")
+                                continue
+                            
+                            # Verificar si ya existe este ingreso
+                            if (concepto, fecha) in ingresos_existentes:
+                                print(f"Ingreso ya existe: {concepto} - {fecha}, omitiendo...")
+                                continue
+                            
+                            # Verificar si existe columna recurrente
+                            if 'recurrente' in columnas_ingresos:
+                                recurrente = int(ingreso[4]) if len(ingreso) > 4 and ingreso[4] else 0
+                                cursor.execute("""
+                                    INSERT INTO ingresos (concepto, monto, fecha, recurrente, fecha_creacion)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, (
+                                    concepto, monto, fecha, recurrente, 
+                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                ))
+                            else:
+                                # Si no existe la columna recurrente, omitirla
+                                cursor.execute("""
+                                    INSERT INTO ingresos (concepto, monto, fecha, fecha_creacion)
+                                    VALUES (?, ?, ?, ?)
+                                """, (
+                                    concepto, monto, fecha,
+                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                ))
+                            
+                            ingresos_ok += 1
+                        except Exception as e:
+                            print(f"Error al importar ingreso: {e}")
+                            continue
+                    
+                    # Confirmar cambios
+                    conn.commit()
+                    print(f"Importación completada: {gastos_ok} gastos, {ingresos_ok} ingresos")
+                    
+                    return (gastos_ok, ingresos_ok)
+                except Exception as e:
+                    # Revertir en caso de error
+                    conn.rollback()
+                    print(f"Error durante la importación: {e}")
+                    raise
+                finally:
+                    # Cerrar la conexión
+                    conn.close()
+            
+            # Mostrar diálogo para seleccionar archivo
+            archivo = filedialog.askopenfilename(
+                title="Seleccionar base de datos anterior",
+                filetypes=[("Base de datos SQLite", "*.db"), ("Todos los archivos", "*.*")]
+            )
+            
+            if not archivo:
+                return  # El usuario canceló
+            
+            # Confirmar la operación
+            if not messagebox.askyesno(
+                "Confirmar importación", 
+                "¿Está seguro de importar datos de esta base de datos?\n"
+                "Se realizará un respaldo de sus datos actuales antes de continuar."
+            ):
+                return
+            
+            # Crear backup de seguridad
+            if not backup_database():
+                messagebox.showerror(
+                    "Error", 
+                    "No se pudo crear un respaldo de seguridad. Operación cancelada."
+                )
+                return
+            
+            # Extraer datos de la versión antigua (importante: siempre inicializar 'datos')
+            datos = extract_data_from_old_version(archivo)
+            
+            # Imprimir info para depuración
+            if datos:
+                print(f"Gastos encontrados: {len(datos['gastos'])}")
+                print(f"Ingresos encontrados: {len(datos['ingresos'])}")
+            
+            # Verificar si hay datos para importar
+            if not datos or (not datos['gastos'] and not datos['ingresos']):
+                messagebox.showinfo(
+                    "Sin datos", 
+                    "No se encontraron datos para importar en la base de datos seleccionada."
+                )
+                return
+            
+            # Realizar la importación con nuestra función simplificada
+            gastos_ok, ingresos_ok = importar_datos_simples(datos['gastos'], datos['ingresos'])
+            
+            # Mostrar resultado
+            messagebox.showinfo(
+                "Importación exitosa", 
+                f"Se importaron {gastos_ok} gastos y {ingresos_ok} ingresos."
+            )
+            
+            # Reiniciar la aplicación para reflejar los cambios
+            if messagebox.askyesno(
+                "Actualización completada", 
+                "Los datos se han importado correctamente. ¿Desea reiniciar la aplicación para aplicar los cambios?"
+            ):
+                self.reiniciar_aplicacion()
+                
+        except Exception as e:
+            # Capturar cualquier excepción y mostrar un mensaje de error
+            error_details = traceback.format_exc()
+            print(f"Error detallado: {error_details}")
+            messagebox.showerror("Error", f"Error al importar datos: {str(e)}")
+
+    def reiniciar_aplicacion(self):
+        """Reinicia la aplicación para aplicar cambios"""
+               
+        try:
+            # Cerrar ventanas y liberar recursos
+            self.root.destroy()
+            
+            # Reiniciar la aplicación
+            python = sys.executable
+            os.execl(python, python, *sys.argv)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo reiniciar la aplicación: {str(e)}")
+
     def cargar_imagen_fondo(self):
         """Carga una imagen de fondo con gatitos"""
         try:

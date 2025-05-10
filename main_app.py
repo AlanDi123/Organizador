@@ -4,6 +4,19 @@ import os
 import sys
 import subprocess
 import traceback
+import atexit
+import gc
+import logging
+
+from utils import ThreadManager
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='app.log'
+)
+logger = logging.getLogger('main_app')
 
 # Configurar opciones para Windows
 def configurar_para_windows():
@@ -15,19 +28,23 @@ def configurar_para_windows():
             
             # Ajustar configuración DPI para evitar problemas de escalado
             windll.shcore.SetProcessDpiAwareness(1)
+            logger.info("Configuración Windows aplicada")
             return True
         except Exception as e:
-            print(f"No se pudo configurar para Windows: {e}")
+            logger.error(f"No se pudo configurar para Windows: {e}")
     return False
 
 # Importaciones envueltas en try-except para manejar errores de importación
 try:
-    from utils import inicializar_db_wrapper
+    from utils import inicializar_db_wrapper, cerrar_conexiones_db
     from ui.app_controller import AppController
 except ImportError as e:
-    print(f"Error al importar módulos: {e}")
+    logger.error(f"Error al importar módulos: {e}")
     input("Presione Enter para salir...")
     sys.exit(1)
+
+# Registro de función para cierre de recursos
+atexit.register(cerrar_conexiones_db)
 
 # Verificar dependencias
 def verificar_dependencias():
@@ -70,18 +87,20 @@ def verificar_dependencias():
             dependencias_faltantes.append('tkcalendar')
         
         if not dependencias_faltantes:
-            print("Dependencias verificadas correctamente.")
+            logger.info("Dependencias verificadas correctamente.")
             return True
             
+        logger.warning(f"Dependencias faltantes: {', '.join(dependencias_faltantes)}")
         print(f"Dependencias faltantes: {', '.join(dependencias_faltantes)}")
         print("Intentando instalar...")
         
         try:
             for dep in dependencias_faltantes:
                 subprocess.check_call([sys.executable, "-m", "pip", "install", dep])
-            print("Dependencias instaladas correctamente.")
+            logger.info("Dependencias instaladas correctamente.")
             return True
         except Exception as e:
+            logger.error(f"Error al instalar dependencias: {e}")
             print(f"Error al instalar dependencias: {e}")
             print(f"Por favor, instale manualmente {', '.join(dependencias_faltantes)} usando pip.")
             
@@ -90,10 +109,37 @@ def verificar_dependencias():
             return False
             
     except Exception as e:
+        logger.error(f"Error durante la verificación de dependencias: {e}")
         print(f"Error durante la verificación de dependencias: {e}")
         print(traceback.format_exc())
         input("Presione Enter para continuar de todos modos...")
         return False
+
+# Función para liberar recursos al cerrar
+def limpiar_recursos():
+    """Libera recursos de memoria al cerrar la aplicación"""
+    try:
+        # Limpiar hilos activos
+        if 'ThreadManager' in globals():
+            ThreadManager.cleanup_threads()
+            ThreadManager.join_all(timeout=0.5)
+        
+        # Forzar liberación de memoria
+        gc.collect()
+        
+        # Cerrar conexiones de bases de datos
+        cerrar_conexiones_db()
+        
+        # Cerrar figuras de matplotlib
+        try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
+        except:
+            pass
+        
+        logger.info("Recursos liberados correctamente")
+    except Exception as e:
+        logger.error(f"Error al liberar recursos: {e}")
 
 # Función principal
 def main():
@@ -101,6 +147,9 @@ def main():
     Función principal que inicializa y ejecuta la aplicación.
     """
     try:
+        # Registrar función de limpieza al salir
+        atexit.register(limpiar_recursos)
+        
         # Configurar para Windows si es posible
         configurar_para_windows()
         
@@ -124,7 +173,13 @@ def main():
             root.geometry('1200x800')
         
         # Configurar icono de la aplicación si existe
-        icon_paths = ["assets/icon.ico", "icon.ico", "assets/icon.png", "icon.png"]
+        icon_paths = [
+            os.path.join("assets", "icon.ico"), 
+            "icon.ico", 
+            os.path.join("assets", "icon.png"), 
+            "icon.png"
+        ]
+        
         for icon_path in icon_paths:
             if os.path.exists(icon_path):
                 try:
@@ -148,7 +203,7 @@ def main():
                 style |= 0x00010000  # WS_MAXIMIZEBOX
                 ctypes.windll.user32.SetWindowLongW(hwnd, -16, style)
         except Exception as e:
-            print(f"Aviso: No se pudo configurar el estilo de maximizar: {e}")
+            logger.warning(f"Aviso: No se pudo configurar el estilo de maximizar: {e}")
         
         # Deshabilitar temporalmente la ventana durante la inicialización
         root.withdraw()
@@ -159,6 +214,8 @@ def main():
         # Configurar manejo de cierre
         def on_closing():
             if messagebox.askokcancel("Salir", "¿Estás seguro que deseas salir?"):
+                # Limpieza antes de cerrar
+                limpiar_recursos()
                 root.destroy()
         
         root.protocol("WM_DELETE_WINDOW", on_closing)
@@ -172,9 +229,14 @@ def main():
         # Iniciar la aplicación
         root.mainloop()
         
+        # Limpieza final
+        limpiar_recursos()
+        
+    # Continuación de main_app.py
+        
     except Exception as e:
         error_msg = f"Error durante la ejecución: {e}\n\n{traceback.format_exc()}"
-        print(error_msg)
+        logger.error(error_msg)
         
         try:
             messagebox.showerror("Error", f"Ocurrió un error: {e}")

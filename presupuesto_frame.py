@@ -1,4 +1,5 @@
 # ui/presupuesto_frame.py
+import logging
 import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -27,9 +28,9 @@ class PresupuestoFrame(tk.Toplevel):
             self.attributes('-toolwindow', False)
         
         # Configurar ventana
-        self.geometry("900x650")
+        self.state('zoomed')
         self.configure(bg=controller.colores['claro']['panel'])
-        self.minsize(600, 450)
+        self.minsize(1280, 920)
         
         # Vincular doble clic en la barra de título para maximizar
         self.bind('<Double-Button-1>', self._toggle_maximize)
