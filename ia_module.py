@@ -4,7 +4,17 @@ from datetime import datetime, timedelta
 import os
 import json
 import sqlite3
-from model.data_manager import cargar_datos
+from functools import lru_cache
+import logging
+from model.data_manager import cargar_datos, DBConnectionManager
+
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='ia_module.log'
+)
+logger = logging.getLogger('ia_module')
 
 class ModuloIA:
     """Clase principal para las funcionalidades de IA del organizador financiero"""
@@ -34,16 +44,16 @@ class ModuloIA:
         try:
             self.gastos_historicos = cargar_datos('gastos')
             self.ingresos_historicos = cargar_datos('ingresos')
-            print(f"Datos históricos cargados: {len(self.gastos_historicos)} gastos, {len(self.ingresos_historicos)} ingresos")
+            logger.info(f"Datos históricos cargados: {len(self.gastos_historicos)} gastos, {len(self.ingresos_historicos)} ingresos")
         except Exception as e:
-            print(f"Error al cargar datos históricos: {e}")
+            logger.error(f"Error al cargar datos históricos: {e}")
             self.gastos_historicos = []
             self.ingresos_historicos = []
     
     # Añadir este método a ModuloIA
     def cargar_configuracion(self):
         """Carga la configuración de IA desde el archivo JSON"""
-        ruta_config = "config/ia_config.json"
+        ruta_config = os.path.join("config", "ia_config.json")
         configuracion_default = {
             "categorias_gasto": {
                 # ... (configuración por defecto)
@@ -75,9 +85,10 @@ class ModuloIA:
                     json.dump(configuracion_default, f, indent=4, ensure_ascii=False)
                 return configuracion_default
         except Exception as e:
-            print(f"Error al cargar configuración de IA: {e}")
+            logger.error(f"Error al cargar configuración de IA: {e}")
             return configuracion_default
     
+    @lru_cache(maxsize=256)
     def categorizar_gasto(self, nombre_gasto):
         """
         Categoriza automáticamente un gasto basado en su nombre utilizando palabras clave.
@@ -166,32 +177,43 @@ class ModuloIA:
         
         return ingresos_procesados
     
-    def obtener_estadisticas_por_categoria(self, gastos_procesados):
+    @lru_cache(maxsize=32)
+    def obtener_estadisticas_por_categoria(self, categoria=None):
         """
-        Calcula estadísticas de gastos agrupados por categoría.
+        Calcula estadísticas de gastos para una categoría o todas.
         
         Args:
-            gastos_procesados (list): Lista de diccionarios de gastos procesados
+            categoria (str, optional): Categoría específica o None para todas
             
         Returns:
             dict: Diccionario con estadísticas por categoría
         """
+        # Utilizar datos ya cargados
+        if not hasattr(self, 'gastos_historicos') or not self.gastos_historicos:
+            self.cargar_datos_historicos()
+            
+        # Procesar gastos
+        gastos_procesados = self.procesar_gastos(self.gastos_historicos)
+        
         if not gastos_procesados:
             return {}
             
         # Agrupar por categoría
         categorias = {}
         for gasto in gastos_procesados:
-            categoria = gasto['categoria']
-            if categoria not in categorias:
-                categorias[categoria] = []
-            categorias[categoria].append(gasto['monto'])
+            cat = gasto['categoria']
+            if categoria is not None and cat != categoria:
+                continue
+                
+            if cat not in categorias:
+                categorias[cat] = []
+            categorias[cat].append(gasto['monto'])
         
         # Calcular estadísticas
         estadisticas = {}
-        for categoria, montos in categorias.items():
+        for cat, montos in categorias.items():
             if montos:
-                estadisticas[categoria] = {
+                estadisticas[cat] = {
                     'total': sum(montos),
                     'promedio': sum(montos) / len(montos),
                     'minimo': min(montos),
@@ -234,7 +256,7 @@ class ModuloIA:
                 # Sumar el monto
                 tendencia[clave_mes] += item['monto']
             except Exception as e:
-                print(f"Error al procesar fecha en tendencia mensual: {e}")
+                logger.error(f"Error al procesar fecha en tendencia mensual: {e}")
                 continue
         
         # Ordenar por fecha
@@ -242,17 +264,20 @@ class ModuloIA:
         
         return tendencia_ordenada
     
-    def detectar_gastos_anomalos(self, gastos_procesados, umbral_z=2.0):
+    def detectar_gastos_anomalos(self, gastos_procesados, umbral_z=None):
         """
         Detecta gastos anómalos utilizando el z-score por categoría.
         
         Args:
             gastos_procesados (list): Lista de diccionarios de gastos
-            umbral_z (float): Umbral de z-score para considerar anómalo
+            umbral_z (float, optional): Umbral de z-score personalizado
             
         Returns:
             list: Lista de gastos anómalos con metadatos adicionales
         """
+        if umbral_z is None:
+            umbral_z = self.config.get('anomalias', {}).get('umbral_z', 2.0)
+            
         anomalias = []
         
         # Verificar que hay suficientes datos
@@ -311,6 +336,13 @@ class ModuloIA:
         """
         recomendaciones = []
         
+        # Obtener configuración
+        config_recomendaciones = self.config.get('recomendaciones', {})
+        umbral_ahorro_bajo = config_recomendaciones.get('umbral_ahorro_bajo', 10)
+        umbral_ahorro_optimo = config_recomendaciones.get('umbral_ahorro_optimo', 20)
+        umbral_concentracion = config_recomendaciones.get('umbral_concentracion_categoria', 40)
+        umbral_recurrentes = config_recomendaciones.get('umbral_gastos_recurrentes', 60)
+        
         # Verificar si hay datos suficientes
         if not gastos_procesados and not ingresos_procesados:
             recomendaciones.append({
@@ -337,12 +369,12 @@ class ModuloIA:
                 'detalle': f'Sus gastos (${total_gastos:.2f}) superan sus ingresos (${total_ingresos:.2f}). Considere reducir gastos no esenciales o buscar fuentes adicionales de ingreso para evitar endeudamiento.',
                 'impacto_estimado': f'Reducir al menos ${abs(balance):.2f} en gastos mensuales'
             })
-        elif porcentaje_ahorro < 10 and porcentaje_ahorro >= 0:
+        elif porcentaje_ahorro < umbral_ahorro_bajo and porcentaje_ahorro >= 0:
             recomendaciones.append({
                 'prioridad': 'media',
                 'descripcion': 'Aumentar tasa de ahorro',
-                'detalle': f'Su tasa de ahorro actual es {porcentaje_ahorro:.1f}%. Se recomienda alcanzar al menos un 10% para crear un fondo de emergencia adecuado.',
-                'impacto_estimado': f'Incrementar ahorro en ${(total_ingresos * 0.1) - balance:.2f} mensuales'
+                'detalle': f'Su tasa de ahorro actual es {porcentaje_ahorro:.1f}%. Se recomienda alcanzar al menos un {umbral_ahorro_bajo}% para crear un fondo de emergencia adecuado.',
+                'impacto_estimado': f'Incrementar ahorro en ${(total_ingresos * umbral_ahorro_bajo/100) - balance:.2f} mensuales'
             })
         
         # 2. Análisis de categorías de gasto
@@ -360,7 +392,7 @@ class ModuloIA:
                 categoria_mayor = max(categorias.items(), key=lambda x: x[1])
                 porcentaje_mayor = (categoria_mayor[1] / total_gastos * 100) if total_gastos > 0 else 0
                 
-                if porcentaje_mayor > 40:
+                if porcentaje_mayor > umbral_concentracion:
                     recomendaciones.append({
                         'prioridad': 'media',
                         'descripcion': f'Optimizar gastos en {categoria_mayor[0]}',
@@ -375,7 +407,7 @@ class ModuloIA:
         if gastos_recurrentes and monto_recurrentes > 0:
             porcentaje_recurrentes = (monto_recurrentes / total_gastos * 100) if total_gastos > 0 else 0
             
-            if porcentaje_recurrentes > 60:
+            if porcentaje_recurrentes > umbral_recurrentes:
                 recomendaciones.append({
                     'prioridad': 'media',
                     'descripcion': 'Alta proporción de gastos recurrentes',
@@ -384,7 +416,7 @@ class ModuloIA:
                 })
         
         # 4. Recomendación de ahorro
-        if porcentaje_ahorro >= 20:
+        if porcentaje_ahorro >= umbral_ahorro_optimo:
             recomendaciones.append({
                 'prioridad': 'baja',
                 'descripcion': 'Optimizar inversiones',

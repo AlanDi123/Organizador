@@ -1,33 +1,108 @@
+# model/data_manager.py
 import sqlite3
 from datetime import datetime
 import os
 import json
 import shutil
+import threading
 import traceback
+import functools
+from functools import lru_cache
+from venv import logger
+from model.db_migration import run_migrations
 
-# Rutas de la base de datos
-DB_FILE = 'finanzas.db'
-BACKUP_FILE = 'finanzas_historial_backup.json'
+# Rutas de la base de datos - ahora usando os.path para compatibilidad multiplataforma
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas.db')
+BACKUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas_historial_backup.json')
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Control de recursión para evitar bucles infinitos
 EN_PROCESO_DE_RESTAURACION = False
 
+# Singleton para gestionar las conexiones a la base de datos
+class DBConnectionManager:
+    """
+    Administrador de conexiones a la base de datos.
+    Implementa el patrón Thread-Local para SQLite.
+    """
+    _instance = None
+    _local = threading.local()  # Almacenamiento local por hilo
+    _db_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas.db')
+    
+    @classmethod
+    def get_instance(cls):
+        """Obtiene la instancia única del manager (Singleton)"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    def get_connection(self):
+        """
+        Obtiene una conexión a la base de datos.
+        Crea una nueva si no existe para el hilo actual.
+        """
+        if not hasattr(self._local, 'connection') or self._local.connection is None:
+            try:
+                # Crear una nueva conexión para este hilo
+                self._local.connection = sqlite3.connect(self._db_file)
+                # Configurar para devolver filas como diccionarios
+                self._local.connection.row_factory = sqlite3.Row
+                logger.debug(f"Nueva conexión creada para hilo {threading.get_ident()}")
+            except Exception as e:
+                logger.error(f"Error al crear conexión: {e}")
+                raise
+        
+        return self._local.connection
+    
+    def close_connection(self):
+        """Cierra la conexión para el hilo actual si existe"""
+        if hasattr(self._local, 'connection') and self._local.connection is not None:
+            try:
+                self._local.connection.close()
+                self._local.connection = None
+                logger.debug(f"Conexión cerrada para hilo {threading.get_ident()}")
+            except Exception as e:
+                logger.error(f"Error al cerrar conexión: {e}")
+                raise
+
+# Función decoradora para medir el tiempo de ejecución
+def measure_execution_time(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        import time
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Función {func.__name__} ejecutada en {end_time - start_time:.4f} segundos")
+        return result
+    return wrapper
+
 def inicializar_db():
     """
     Inicializa la base de datos creando las tablas necesarias si no existen.
-    También verifica y crea el directorio si es necesario.
+    También ejecuta migraciones si es necesario actualizar desde una versión anterior.
     
     Returns:
         bool: True si la inicialización fue exitosa, False en caso contrario
     """
     try:
+        # Ejecutar migraciones primero
+        if not run_migrations():
+            logger.error("Error en la migración de la base de datos.")
+            return False
+        
         # Asegurar que el directorio exista
         os.makedirs(os.path.dirname(os.path.abspath(DB_FILE)), exist_ok=True)
         
-        # Conectar a la base de datos
-        conn = sqlite3.connect(DB_FILE)
-        conn.execute("PRAGMA foreign_keys = ON")  # Habilitar integridad referencial
+        # Obtener conexión desde el manager
+        conn = DBConnectionManager.get_instance().get_connection()
+        cursor = conn.cursor()
+
+        #Asegurar que el directorio exista
+        os.makedirs(os.path.dirname(os.path.abspath(DB_FILE)), exist_ok=True)
+        
+        # Obtener conexión desde el manager
+        conn = DBConnectionManager.get_instance().get_connection()
         cursor = conn.cursor()
         
         # Verificar si las tablas existen
@@ -118,7 +193,6 @@ def inicializar_db():
         
         # Confirmar transacción
         conn.commit()
-        conn.close()
         print("Base de datos inicializada correctamente")
         return True
     except Exception as e:
@@ -129,12 +203,125 @@ def inicializar_db():
         try:
             if 'conn' in locals() and conn:
                 conn.rollback()
-                conn.close()
         except:
             pass
             
         return False
 
+#@measure_execution_time
+@lru_cache(maxsize=32)
+
+def importar_gastos(gastos_antiguos):
+    """Importa gastos desde una base de datos antigua"""
+    from datetime import datetime
+    
+    conn = DBConnectionManager.get_instance().get_connection()
+    cursor = conn.cursor()
+    importados = 0
+    
+    try:
+        # Iniciar transacción
+        conn.execute("BEGIN TRANSACTION")
+        
+        for gasto in gastos_antiguos:
+            try:
+                # Extraer valores de manera segura según la estructura vista en el log
+                # (id, nombre, monto, recurrente, fecha, es_historial, fecha_creacion)
+                nombre = str(gasto[1]) if len(gasto) > 1 and gasto[1] is not None else "Gasto importado"
+                
+                monto = 0.0
+                if len(gasto) > 2 and gasto[2] is not None:
+                    try:
+                        monto = float(gasto[2])
+                    except (ValueError, TypeError):
+                        monto = 0.0
+                
+                recurrente = 0
+                if len(gasto) > 3 and gasto[3] is not None:
+                    try:
+                        recurrente = int(gasto[3])
+                    except (ValueError, TypeError):
+                        recurrente = 0
+                
+                fecha = datetime.now().strftime("%Y-%m-%d")
+                if len(gasto) > 4 and gasto[4] is not None:
+                    fecha = str(gasto[4])
+                
+                # Insertar sin verificar duplicados (evita el problema de hashable)
+                cursor.execute("""
+                    INSERT INTO gastos (nombre, monto, recurrente, fecha, fecha_creacion)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (nombre, monto, recurrente, fecha, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                
+                importados += 1
+            except Exception as e:
+                logger.error(f"Error al importar gasto individual: {e}")
+                # Continuar con el siguiente en caso de error
+                continue
+        
+        conn.commit()
+        logger.info(f"Importados {importados} gastos")
+        return importados
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error al importar gastos: {e}")
+        raise
+        
+def importar_ingresos(ingresos_antiguos):
+    """Importa ingresos desde una base de datos antigua"""
+    from datetime import datetime
+    
+    conn = DBConnectionManager.get_instance().get_connection()
+    cursor = conn.cursor()
+    importados = 0
+    
+    try:
+        # Iniciar transacción
+        conn.execute("BEGIN TRANSACTION")
+        
+        for ingreso in ingresos_antiguos:
+            try:
+                # Extraer valores de manera segura según la estructura vista en el log
+                # (id, concepto, monto, fecha, recurrente, fecha_creacion)
+                concepto = str(ingreso[1]) if len(ingreso) > 1 and ingreso[1] is not None else "Ingreso importado"
+                
+                monto = 0.0
+                if len(ingreso) > 2 and ingreso[2] is not None:
+                    try:
+                        monto = float(ingreso[2])
+                    except (ValueError, TypeError):
+                        monto = 0.0
+                
+                fecha = datetime.now().strftime("%Y-%m-%d")
+                if len(ingreso) > 3 and ingreso[3] is not None:
+                    fecha = str(ingreso[3])
+                
+                recurrente = 0
+                if len(ingreso) > 4 and ingreso[4] is not None:
+                    try:
+                        recurrente = int(ingreso[4])
+                    except (ValueError, TypeError):
+                        recurrente = 0
+                
+                # Insertar sin verificar duplicados (evita el problema de hashable)
+                cursor.execute("""
+                    INSERT INTO ingresos (concepto, monto, fecha, recurrente, fecha_creacion)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (concepto, monto, fecha, recurrente, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                
+                importados += 1
+            except Exception as e:
+                logger.error(f"Error al importar ingreso individual: {e}")
+                # Continuar con el siguiente en caso de error
+                continue
+        
+        conn.commit()
+        logger.info(f"Importados {importados} ingresos")
+        return importados
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error al importar ingresos: {e}")
+        raise
 def cargar_datos(tabla, incluir_historial=False):
     """
     Carga todos los datos de una tabla específica.
@@ -152,7 +339,7 @@ def cargar_datos(tabla, incluir_historial=False):
             print(f"Tabla inválida: {tabla}")
             return []
             
-        conn = sqlite3.connect(DB_FILE)
+        conn = DBConnectionManager.get_instance().get_connection()
         cursor = conn.cursor()
         
         # Verificar si la tabla tiene la columna es_historial
@@ -185,7 +372,6 @@ def cargar_datos(tabla, incluir_historial=False):
                     cursor.execute('SELECT * FROM ingresos WHERE es_historial = 0 OR es_historial IS NULL ORDER BY fecha DESC')
         
         datos = cursor.fetchall()
-        conn.close()
         return datos
     except Exception as e:
         print(f"Error al cargar datos: {e}")
@@ -384,8 +570,7 @@ def guardar_gasto(nombre, monto, recurrente, fecha=None):
         else:
             fecha = datetime.now().strftime("%Y-%m-%d")
         
-        conn = sqlite3.connect(DB_FILE)
-        conn.execute("PRAGMA foreign_keys = ON")
+        conn = DBConnectionManager.get_instance().get_connection()
         cursor = conn.cursor()
         
         # Iniciar transacción
@@ -431,10 +616,13 @@ def guardar_gasto(nombre, monto, recurrente, fecha=None):
             )
         
         conn.commit()
-        conn.close()
         
         # Actualizar el historial
         _actualizar_historial_gasto(nombre, recurrente)
+        
+        # Invalidar caché
+        if hasattr(cargar_datos, 'cache_clear'):
+            cargar_datos.cache_clear()
         
         return True
     except Exception as e:
@@ -445,7 +633,6 @@ def guardar_gasto(nombre, monto, recurrente, fecha=None):
         try:
             if 'conn' in locals() and conn:
                 conn.rollback()
-                conn.close()
         except:
             pass
             

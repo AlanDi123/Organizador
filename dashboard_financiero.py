@@ -7,11 +7,32 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib
+import gc
+import weakref
+import threading
+import logging
+
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename='dashboard.log'
+)
+logger = logging.getLogger('dashboard_financiero')
+
 matplotlib.use('TkAgg')  # Importante para evitar problemas en algunos sistemas
 
 from model.data_manager import cargar_datos
 from model.ia_module import modulo_ia
 
+# Lista global para mantener referencia a figuras y prevenir recolección de basura prematura
+_figuras_activas = []
+
+def limpiar_figuras_inactivas():
+    """Limpia referencias a figuras que ya no están en pantalla"""
+    global _figuras_activas
+    _figuras_activas = [fig for fig in _figuras_activas if fig() is not None]
+    
 class DashboardFinanciero(tk.Toplevel):
     def __init__(self, parent, controller):
         super().__init__(parent)
@@ -27,9 +48,10 @@ class DashboardFinanciero(tk.Toplevel):
             self.attributes('-toolwindow', False)
         
         # Configurar tamaño y propiedades
-        self.geometry("900x650")
+        # Funciona en Windows
+        self.state('zoomed')
         self.configure(bg=controller.colores['claro']['panel'])
-        self.minsize(600, 450)
+        self.minsize(1280, 920)
         
         # Vincular doble clic en la barra de título para maximizar
         self.bind('<Double-Button-1>', self._toggle_maximize)
@@ -37,7 +59,14 @@ class DashboardFinanciero(tk.Toplevel):
         # Inicializar datos
         self.interfaz_creada = False
         self.actualizando_interfaz = False
-        self.cargar_datos()
+        self.figuras = []  # Para guardar referencias a los gráficos
+        
+        # Vincular evento de cierre
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Cargar datos en un hilo separado
+        self.carga_exitosa = threading.Event()
+        threading.Thread(target=self.cargar_datos_en_hilo, daemon=True).start()
         
         # Crear interfaz
         self.crear_interfaz()
@@ -54,7 +83,74 @@ class DashboardFinanciero(tk.Toplevel):
         
         # Mostrar la ventana con fade-in y forzar actualización inicial
         self.after(100, lambda: self.attributes('-alpha', 1.0))
-        self.after(200, self.actualizar_dashboard)
+        self.after(200, self.verificar_carga_datos)
+    
+    def verificar_carga_datos(self):
+        """Verifica si los datos se han cargado y actualiza el dashboard"""
+        if self.carga_exitosa.is_set():
+            self.actualizar_dashboard()
+        else:
+            # Verificar nuevamente después de 100ms
+            self.after(100, self.verificar_carga_datos)
+    
+    def cargar_datos_en_hilo(self):
+        """Carga los datos en un hilo separado para no bloquear la UI"""
+        try:
+            logger.info("Iniciando carga de datos para el dashboard")
+            # Obtener datos de gastos e ingresos
+            self.gastos = cargar_datos("gastos")
+            self.ingresos = cargar_datos("ingresos")
+            
+            # Inicializar otras variables de datos
+            self.total_gastos = sum(gasto[2] for gasto in self.gastos if gasto[2] is not None and isinstance(gasto[2], (int, float)) and gasto[2] > 0)
+            self.total_ingresos = sum(ingreso[2] for ingreso in self.ingresos if ingreso[2] is not None and isinstance(ingreso[2], (int, float)) and ingreso[2] > 0)
+            self.balance = self.total_ingresos - self.total_gastos
+            
+            # Marcar que la carga de datos ha terminado
+            self.carga_exitosa.set()
+            logger.info(f"Datos cargados exitosamente: {len(self.gastos)} gastos, {len(self.ingresos)} ingresos")
+        except Exception as e:
+            logger.error(f"Error al cargar datos: {e}")
+            # Inicializar con valores predeterminados para evitar errores
+            self.gastos = []
+            self.ingresos = []
+            self.total_gastos = 0
+            self.total_ingresos = 0
+            self.balance = 0
+            
+            # Marcar carga completada para no bloquear la UI
+            self.carga_exitosa.set()
+    
+    def on_closing(self):
+        """Maneja el cierre de la ventana, limpiando recursos"""
+        # Liberar recursos de matplotlib
+        self.limpiar_recursos_matplotlib()
+        self.destroy()
+    
+    def limpiar_recursos_matplotlib(self):
+        """Libera los recursos de matplotlib para evitar fugas de memoria"""
+        try:
+            # Limpiar referencias a figuras
+            if hasattr(self, 'figuras'):
+                for fig_weak in self.figuras:
+                    fig = fig_weak()
+                    if fig is not None:
+                        plt.close(fig)
+                self.figuras = []
+            
+            # Limpiar figuras globales
+            global _figuras_activas
+            for fig_weak in _figuras_activas:
+                fig = fig_weak()
+                if fig is not None:
+                    plt.close(fig)
+            _figuras_activas = []
+            
+            # Forzar recolección de basura
+            gc.collect()
+            logger.info("Recursos de matplotlib liberados")
+        except Exception as e:
+            logger.error(f"Error al limpiar recursos de matplotlib: {e}")
     
     def _toggle_maximize(self, event=None):
         """Alterna entre estado normal y maximizado con doble clic"""
@@ -99,33 +195,6 @@ class DashboardFinanciero(tk.Toplevel):
         
         # Mostrar la ventana una vez configurada
         self.deiconify()
-    
-    def cargar_datos(self):
-        """Carga los datos necesarios para el dashboard"""
-        try:
-            # Obtener datos de gastos e ingresos usando la función importada
-            self.gastos = cargar_datos("gastos")
-            self.ingresos = cargar_datos("ingresos")
-            
-            # Si no hay datos, inicializar con listas vacías para evitar errores
-            if self.gastos is None:
-                self.gastos = []
-            if self.ingresos is None:
-                self.ingresos = []
-                
-            # Inicializar otras variables de datos que se usarán
-            self.total_gastos = sum(gasto['monto'] for gasto in self.gastos) if self.gastos else 0
-            self.total_ingresos = sum(ingreso['monto'] for ingreso in self.ingresos) if self.ingresos else 0
-            self.balance = self.total_ingresos - self.total_gastos
-            
-        except Exception as e:
-            print(f"Error al cargar datos para el dashboard: {e}")
-            # Inicializar con valores predeterminados para evitar errores
-            self.gastos = []
-            self.ingresos = []
-            self.total_gastos = 0
-            self.total_ingresos = 0
-            self.balance = 0
     
     def crear_interfaz(self):
         """Crea la interfaz del dashboard"""
@@ -242,8 +311,15 @@ class DashboardFinanciero(tk.Toplevel):
         )
         self.recomendaciones_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        # Inicializar con datos actuales
-        self.actualizar_dashboard()
+        # Mostrar mensaje de carga
+        self.mensaje_carga = tk.Label(
+            self.main_frame,
+            text="Cargando datos...",
+            font=("Comic Sans MS", 14),
+            fg=self.controller.colores['claro']['texto_suave'],
+            bg=self.controller.colores['claro']['panel']
+        )
+        self.mensaje_carga.place(relx=0.5, rely=0.5, anchor='center')
         
         self.interfaz_creada = True
         self.actualizando_interfaz = False
@@ -266,9 +342,19 @@ class DashboardFinanciero(tk.Toplevel):
         # Cerrar figuras anteriores para evitar fugas de memoria
         plt.close('all')
         
+        # Limpiar figuras inactivas
+        limpiar_figuras_inactivas()
+        
         # Implementación según las necesidades
         fig, ax = plt.subplots(figsize=(ancho/100, alto/100), dpi=100)
-        # Configuración adicional del gráfico...
+        
+        # Agregar a la lista de figuras activas con referencia débil
+        global _figuras_activas
+        _figuras_activas.append(weakref.ref(fig))
+        
+        # Guardar referencia local
+        self.figuras.append(weakref.ref(fig))
+        
         return fig, ax
     
     def redondear_widget(self, widget):
@@ -278,7 +364,7 @@ class DashboardFinanciero(tk.Toplevel):
             if hasattr(widget, 'config') and callable(getattr(widget.config, '__call__', None)):
                 widget.config(highlightthickness=0)
         except Exception as e:
-            print(f"No se pudieron aplicar bordes redondeados: {e}")
+            logger.error(f"No se pudieron aplicar bordes redondeados: {e}")
     
     def actualizar_dashboard(self, event=None):
         """Actualiza todos los componentes del dashboard"""
@@ -293,6 +379,10 @@ class DashboardFinanciero(tk.Toplevel):
         self.actualizando_interfaz = True
         
         try:
+            # Ocultar mensaje de carga si existe
+            if hasattr(self, 'mensaje_carga'):
+                self.mensaje_carga.place_forget()
+            
             # Filtrar datos según el periodo seleccionado
             periodo = self.periodo_var.get()
             fecha_inicio = None
@@ -337,7 +427,7 @@ class DashboardFinanciero(tk.Toplevel):
             self.actualizar_recomendaciones(gastos_filtrados, ingresos_filtrados)
         
         except Exception as e:
-            print(f"Error al actualizar dashboard: {e}")
+            logger.error(f"Error al actualizar dashboard: {e}")
         finally:
             self.actualizando_interfaz = False
     
@@ -423,400 +513,3 @@ class DashboardFinanciero(tk.Toplevel):
                 fg=self.controller.colores['claro']['texto'],
                 bg=self.controller.colores['claro']['panel']
             ).pack(anchor='w')
-    
-    def actualizar_grafico_izquierdo(self, gastos):
-        """Actualiza el gráfico izquierdo (distribución de gastos por categoría)"""
-        # Limpiar frame actual
-        for widget in self.grafico_izquierdo.winfo_children():
-            widget.destroy()
-        
-        # Cerrar figuras anteriores para evitar fugas de memoria
-        plt.close('all')
-        
-        # Título
-        tk.Label(
-            self.grafico_izquierdo,
-            text="Distribución de Gastos por Categoría",
-            font=("Comic Sans MS", 14, "bold"),
-            fg=self.controller.colores['claro']['acento'],
-            bg=self.controller.colores['claro']['panel']
-        ).pack(anchor='w', pady=(0, 10))
-        
-        # Si no hay gastos, mostrar mensaje
-        if not gastos:
-            tk.Label(
-                self.grafico_izquierdo,
-                text="No hay datos de gastos en el periodo seleccionado",
-                font=("Comic Sans MS", 12),
-                fg=self.controller.colores['claro']['texto_suave'],
-                bg=self.controller.colores['claro']['panel']
-            ).pack(pady=50)
-            return
-        
-        # Crear figura y canvas
-        fig, ax = plt.subplots(figsize=(5, 4), dpi=100)
-        
-        # Agrupar por categoría
-        categorias = {}
-        for gasto in gastos:
-            categoria = gasto.get('categoria', 'otros')
-            if categoria not in categorias:
-                categorias[categoria] = 0
-            categorias[categoria] += gasto['monto']
-        
-        # Ordenar por valor (de mayor a menor)
-        categorias_ordenadas = dict(sorted(categorias.items(), key=lambda x: x[1], reverse=True))
-        
-        # Colores personalizados
-        colores = [
-            '#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c2f0', 
-            '#ffb3e6', '#d9b38c', '#b3d9ff', '#ff6666', '#c2f0c2'
-        ]
-        
-        # Crear gráfico de torta
-        cuñas, textos, autotextos = ax.pie(
-            categorias_ordenadas.values(), 
-            labels=None,
-            autopct='%1.1f%%',
-            startangle=90,
-            colors=colores[:len(categorias_ordenadas)]
-        )
-        
-        # Personalizar textos
-        plt.setp(autotextos, size=9, weight='bold')
-        
-        # Añadir leyenda
-        ax.legend(
-            cuñas, 
-            categorias_ordenadas.keys(),
-            loc="center left",
-            bbox_to_anchor=(1, 0, 0.5, 1)
-        )
-        
-        ax.set_title('Gastos por Categoría', fontsize=14)
-        ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
-        
-        # Crear un contenedor para el gráfico que se ajuste
-        canvas_frame = tk.Frame(self.grafico_izquierdo, bg=self.controller.colores['claro']['panel'])
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Incrustar gráfico en Tkinter con opción de ajuste
-        canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    def actualizar_grafico_derecho(self, gastos, ingresos):
-        """Actualiza el gráfico derecho (evolución de gastos e ingresos)"""
-        # Limpiar frame actual
-        for widget in self.grafico_derecho.winfo_children():
-            widget.destroy()
-        
-        # Cerrar figuras anteriores para evitar fugas de memoria
-        plt.close('all')
-        
-        # Título
-        tk.Label(
-            self.grafico_derecho,
-            text="Evolución Mensual de Gastos e Ingresos",
-            font=("Comic Sans MS", 14, "bold"),
-            fg=self.controller.colores['claro']['acento'],
-            bg=self.controller.colores['claro']['panel']
-        ).pack(anchor='w', pady=(0, 10))
-        
-        # Si no hay datos, mostrar mensaje
-        if not gastos and not ingresos:
-            tk.Label(
-                self.grafico_derecho,
-                text="No hay datos en el periodo seleccionado",
-                font=("Comic Sans MS", 12),
-                fg=self.controller.colores['claro']['texto_suave'],
-                bg=self.controller.colores['claro']['panel']
-            ).pack(pady=50)
-            return
-        
-        # Preparar datos para gráfico de barras
-        # Agrupar por mes
-        gastos_por_mes = {}
-        ingresos_por_mes = {}
-        
-        # Función auxiliar para obtener clave de mes
-        def obtener_clave_mes(fecha_str):
-            try:
-                fecha = datetime.strptime(fecha_str, "%Y-%m-%d")
-                return fecha.strftime("%Y-%m")
-            except:
-                return "Sin fecha"
-        
-        # Procesar gastos
-        for gasto in gastos:
-            clave_mes = obtener_clave_mes(gasto['fecha'])
-            if clave_mes not in gastos_por_mes:
-                gastos_por_mes[clave_mes] = 0
-            gastos_por_mes[clave_mes] += gasto['monto']
-        
-        # Procesar ingresos
-        for ingreso in ingresos:
-            clave_mes = obtener_clave_mes(ingreso['fecha'])
-            if clave_mes not in ingresos_por_mes:
-                ingresos_por_mes[clave_mes] = 0
-            ingresos_por_mes[clave_mes] += ingreso['monto']
-        
-        # Obtener todos los meses únicos y ordenarlos
-        todos_meses = sorted(set(list(gastos_por_mes.keys()) + list(ingresos_por_mes.keys())))
-        
-        # Limitar a los últimos 12 meses si hay muchos
-        if len(todos_meses) > 12:
-            todos_meses = todos_meses[-12:]
-        
-        # Crear listas ordenadas
-        gastos_lista = [gastos_por_mes.get(mes, 0) for mes in todos_meses]
-        ingresos_lista = [ingresos_por_mes.get(mes, 0) for mes in todos_meses]
-        
-        # Crear etiquetas más legibles
-        etiquetas_meses = []
-        for mes_clave in todos_meses:
-            try:
-                fecha = datetime.strptime(mes_clave, "%Y-%m")
-                etiqueta = fecha.strftime("%b %y")  # Abreviatura del mes y año
-                etiquetas_meses.append(etiqueta)
-            except:
-                etiquetas_meses.append(mes_clave)
-        
-        # Obtener dimensiones actuales del frame
-        ancho_frame = self.grafico_derecho.winfo_width() or 400
-        alto_frame = self.grafico_derecho.winfo_height() or 300
-        
-        # Ajustar tamaño del gráfico
-        ancho_grafico = max(ancho_frame - 40, 300) / 100  # Convertir a pulgadas para figsize
-        alto_grafico = max(alto_frame - 60, 200) / 100
-        
-        # Crear gráfico
-        fig, ax = plt.subplots(figsize=(ancho_grafico, alto_grafico), dpi=100)
-        
-        # Configurar ancho de barras
-        indice = np.arange(len(todos_meses))
-        ancho = 0.35
-        
-        # Crear barras
-        rects1 = ax.bar(indice - ancho/2, gastos_lista, ancho, label='Gastos', color=self.controller.colores['claro']['alerta'])
-        rects2 = ax.bar(indice + ancho/2, ingresos_lista, ancho, label='Ingresos', color=self.controller.colores['claro']['exito'])
-        
-        # Añadir línea de balance
-        balance_lista = [ingresos_lista[i] - gastos_lista[i] for i in range(len(ingresos_lista))]
-        ax.plot(indice, balance_lista, 'o-', label='Balance', color=self.controller.colores['claro']['acento'])
-        
-        # Personalizar gráfico
-        ax.set_xlabel('Mes')
-        ax.set_ylabel('Monto ($)')
-        ax.set_title('Gastos vs Ingresos por Mes')
-        ax.set_xticks(indice)
-        ax.set_xticklabels(etiquetas_meses, rotation=45)
-        ax.legend()
-        
-        plt.tight_layout()
-        
-        # Crear un contenedor para el gráfico que se ajuste
-        canvas_frame = tk.Frame(self.grafico_derecho, bg=self.controller.colores['claro']['panel'])
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Incrustar gráfico en Tkinter con opción de ajuste
-        canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    def actualizar_anomalias(self, gastos):
-        """Actualiza el panel de anomalías de gastos"""
-        # Limpiar frame actual
-        for widget in self.anomalias_frame.winfo_children():
-            widget.destroy()
-        
-        # Título
-        tk.Label(
-            self.anomalias_frame,
-            text="Detección de Gastos Anómalos",
-            font=("Comic Sans MS", 14, "bold"),
-            fg=self.controller.colores['claro']['acento'],
-            bg=self.controller.colores['claro']['panel']
-        ).pack(anchor='w', pady=(0, 10))
-        
-        # Detectar anomalías
-        anomalias = modulo_ia.detectar_gastos_anomalos(gastos)
-        
-        if not anomalias:
-            tk.Label(
-                self.anomalias_frame,
-                text="No se detectaron gastos anómalos en el periodo seleccionado.",
-                font=("Comic Sans MS", 11),
-                fg=self.controller.colores['claro']['texto_suave'],
-                bg=self.controller.colores['claro']['panel'],
-                wraplength=300,
-                justify='left'
-            ).pack(anchor='w', pady=10)
-            return
-        
-        # Mostrar hasta 5 anomalías principales
-        anomalias = anomalias[:5] if len(anomalias) > 5 else anomalias
-        
-        # Crear tabla
-        tabla_frame = tk.Frame(self.anomalias_frame, bg=self.controller.colores['claro']['panel'])
-        tabla_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # Cabecera de tabla
-        columnas = ["Gasto", "Monto", "Desviación"]
-        
-        # Crear encabezados
-        for i, columna in enumerate(columnas):
-            tk.Label(
-                tabla_frame,
-                text=columna,
-                font=("Comic Sans MS", 11, "bold"),
-                fg=self.controller.colores['claro']['texto'],
-                bg=self.controller.colores['claro']['borde']
-            ).grid(row=0, column=i, sticky='ew', padx=1, pady=1)
-        
-        # Configurar columnas
-        tabla_frame.grid_columnconfigure(0, weight=3)
-        tabla_frame.grid_columnconfigure(1, weight=1)
-        tabla_frame.grid_columnconfigure(2, weight=1)
-        
-        # Mostrar anomalías
-        for i, anomalia in enumerate(anomalias, start=1):
-            # Color de fondo alternado
-            color_fondo = self.controller.colores['claro']['panel'] if i % 2 == 0 else self.controller.colores['claro']['fondo']
-            
-            # Nombre
-            tk.Label(
-                tabla_frame,
-                text=anomalia['nombre'],
-                font=("Comic Sans MS", 10),
-                fg=self.controller.colores['claro']['texto'],
-                bg=color_fondo,
-                anchor='w',
-                padx=5
-            ).grid(row=i, column=0, sticky='ew', padx=1, pady=1)
-            
-            # Monto
-            tk.Label(
-                tabla_frame,
-                text=f"${anomalia['monto']:.2f}",
-                font=("Comic Sans MS", 10),
-                fg=self.controller.colores['claro']['texto'],
-                bg=color_fondo,
-                anchor='e',
-                padx=5
-            ).grid(row=i, column=1, sticky='ew', padx=1, pady=1)
-            
-            # Desviación
-            diferencia = anomalia.get('diferencia_porcentual', 0)
-            tk.Label(
-                tabla_frame,
-                text=f"{diferencia:+.1f}%",
-                font=("Comic Sans MS", 10, "bold"),
-                fg=self.controller.colores['claro']['alerta'] if diferencia > 0 else self.controller.colores['claro']['exito'],
-                bg=color_fondo,
-                anchor='e',
-                padx=5
-            ).grid(row=i, column=2, sticky='ew', padx=1, pady=1)
-    
-    def actualizar_recomendaciones(self, gastos, ingresos):
-        """Actualiza el panel de recomendaciones personalizadas"""
-        # Limpiar frame actual
-        for widget in self.recomendaciones_frame.winfo_children():
-            widget.destroy()
-        
-        # Título
-        tk.Label(
-            self.recomendaciones_frame,
-            text="Recomendaciones Personalizadas",
-            font=("Comic Sans MS", 14, "bold"),
-            fg=self.controller.colores['claro']['acento'],
-            bg=self.controller.colores['claro']['panel']
-        ).pack(anchor='w', pady=(0, 10))
-        
-        # Generar recomendaciones
-        recomendaciones = modulo_ia.generar_recomendaciones(gastos, ingresos)
-        
-        # Mostrar recomendaciones
-        contenedor_scroll = tk.Frame(self.recomendaciones_frame, bg=self.controller.colores['claro']['panel'])
-        contenedor_scroll.pack(fill=tk.BOTH, expand=True)
-        
-        # Añadir canvas con scrollbar
-        canvas = tk.Canvas(
-            contenedor_scroll,
-            bg=self.controller.colores['claro']['panel'],
-            highlightthickness=0
-        )
-        scrollbar = ttk.Scrollbar(contenedor_scroll, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=self.controller.colores['claro']['panel'])
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Mostrar cada recomendación
-        for i, recomendacion in enumerate(recomendaciones):
-            # Crear frame para la recomendación
-            rec_frame = tk.Frame(
-                scrollable_frame,
-                bg=self.controller.colores['claro']['panel'],
-                highlightbackground=self.controller.colores['claro']['borde'],
-                highlightthickness=1,
-                padx=15,
-                pady=15,
-                bd=0
-            )
-            rec_frame.pack(fill=tk.X, pady=10)
-            
-            # Prioridad con ícono y color
-            prioridad = recomendacion.get('prioridad', 'media')
-            color_prioridad = {
-                'alta': self.controller.colores['claro']['alerta'],
-                'media': self.controller.colores['claro']['acento'],
-                'baja': self.controller.colores['claro']['texto_suave']
-            }.get(prioridad, self.controller.colores['claro']['texto'])
-            
-            icono_prioridad = {
-                'alta': '🔴',
-                'media': '🟠',
-                'baja': '🟢'
-            }.get(prioridad, '⚪')
-            
-            # Encabezado
-            tk.Label(
-                rec_frame,
-                text=f"{icono_prioridad} {recomendacion.get('descripcion', 'Recomendación')}",
-                font=("Comic Sans MS", 12, "bold"),
-                fg=color_prioridad,
-                bg=self.controller.colores['claro']['panel'],
-                anchor='w'
-            ).pack(fill=tk.X)
-            
-            # Detalle
-            tk.Label(
-                rec_frame,
-                text=recomendacion.get('detalle', ''),
-                font=("Comic Sans MS", 10),
-                fg=self.controller.colores['claro']['texto'],
-                bg=self.controller.colores['claro']['panel'],
-                anchor='w',
-                justify='left',
-                wraplength=700
-            ).pack(fill=tk.X, pady=5)
-            
-            # Impacto o ahorro potencial
-            if 'impacto_estimado' in recomendacion:
-                tk.Label(
-                    rec_frame,
-                    text=f"Impacto: {recomendacion['impacto_estimado']}",
-                    font=("Comic Sans MS", 10, "italic"),
-                    fg=self.controller.colores['claro']['texto_suave'],
-                    bg=self.controller.colores['claro']['panel'],
-                    anchor='w'
-                ).pack(fill=tk.X)

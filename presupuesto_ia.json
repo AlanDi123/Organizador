@@ -1,32 +1,47 @@
 {
+    "otros": {
+        "sugerido": 36000.0,
+        "historico_promedio": 346666.6666666667,
+        "explicacion": "Basado en su gasto histórico promedio ($346666.67) y las mejores prácticas financieras."
+    },
     "alimentación": {
-        "sugerido": 0.0,
+        "sugerido": 150000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 25.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 25.0% de sus ingresos."
     },
     "vivienda": {
-        "sugerido": 0.0,
+        "sugerido": 180000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 30.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 30.0% de sus ingresos."
     },
     "transporte": {
-        "sugerido": 0.0,
+        "sugerido": 90000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 15.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 15.0% de sus ingresos."
     },
     "servicios": {
-        "sugerido": 0.0,
+        "sugerido": 60000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 10.0% de sus ingresos."
     },
-    "otros": {
-        "sugerido": 0.0,
+    "ocio": {
+        "sugerido": 30000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 5.0% de sus ingresos."
+    },
+    "salud": {
+        "sugerido": 30000.0,
+        "historico_promedio": 0,
+        "explicacion": "Basado en las mejores prácticas financieras: 5.0% de sus ingresos."
+    },
+    "educación": {
+        "sugerido": 30000.0,
+        "historico_promedio": 0,
+        "explicacion": "Basado en las mejores prácticas financieras: 5.0% de sus ingresos."
     },
     "ahorro": {
-        "sugerido": 0.0,
+        "sugerido": 60000.0,
         "historico_promedio": 0,
-        "explicacion": "Asignación estándar recomendada: 10.0% de sus ingresos."
+        "explicacion": "Basado en las mejores prácticas financieras: 10.0% de sus ingresos."
     }
 }
