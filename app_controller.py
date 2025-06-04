@@ -14,7 +14,6 @@ import calendar
 import locale
 from ui.dashboard_financiero import DashboardFinanciero
 import os
-from ui.dashboard_financiero import DashboardFinanciero
 from ui.presupuesto_frame import PresupuestoFrame
 from model.ia_module import modulo_ia
 from ui.frames.gastos_frame import GastosFrame
