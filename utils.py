@@ -27,10 +27,10 @@ def measure_time(func):
 
 # Importación condicional para el manejador de bases de datos
 try:
-    from model.data_manager import inicializar_db, DBConnectionManager
+    from data_manager import inicializar_db, DBConnectionManager
 except ImportError:
     # La importación por defecto para la inicialización básica
-    from model.data_manager import inicializar_db
+    from data_manager import inicializar_db
 
 @measure_time
 def inicializar_db_wrapper():

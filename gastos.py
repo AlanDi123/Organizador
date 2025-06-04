@@ -1,5 +1,5 @@
 from datetime import datetime
-from model.data_manager import cargar_datos
+from data_manager import cargar_datos
 
 def calcular_total_gastos():
     """

@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 import matplotlib
 matplotlib.use('TkAgg')
 
-from model.presupuesto_ia import PresupuestoInteligente
-from model.ia_module import modulo_ia
+from presupuesto_ia import PresupuestoInteligente
+from ia_module import modulo_ia
 
 class PresupuestoFrame(tk.Toplevel):
     def __init__(self, parent, controller):
@@ -113,7 +113,7 @@ class PresupuestoFrame(tk.Toplevel):
             self.sistema_presupuesto = PresupuestoInteligente()
             
             # Cargar datos históricos
-            from model.data_manager import cargar_datos
+            from data_manager import cargar_datos
             self.gastos_recientes = cargar_datos("gastos") or []
             self.ingresos_recientes = cargar_datos("ingresos") or []
             

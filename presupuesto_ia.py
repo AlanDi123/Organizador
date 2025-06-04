@@ -3,8 +3,8 @@ import numpy as np
 from datetime import datetime, timedelta
 import json
 import os
-from model.data_manager import cargar_datos
-from model.ia_module import modulo_ia
+from data_manager import cargar_datos
+from ia_module import modulo_ia
 
 class PresupuestoInteligente:
     def __init__(self):

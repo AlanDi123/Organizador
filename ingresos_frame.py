@@ -6,8 +6,13 @@ import locale
 import csv
 import os
 import calendar
-from model.data_manager import cargar_datos, guardar_ingreso, eliminar_dato
-from model.data_manager import cargar_historial_conceptos, obtener_estadisticas_concepto
+from data_manager import (
+    cargar_datos,
+    guardar_ingreso,
+    eliminar_dato,
+    cargar_historial_conceptos,
+    obtener_estadisticas_concepto,
+)
 
 class IngresosFrame(tk.Frame):
     def __init__(self, parent, controller):

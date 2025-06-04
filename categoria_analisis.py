@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 import matplotlib
 matplotlib.use('TkAgg')
 
-from model.ia_module import modulo_ia
-from model.data_manager import cargar_datos
+from ia_module import modulo_ia
+from data_manager import cargar_datos
 
 class CategoriaAnalisis(tk.Toplevel):
     def __init__(self, parent, controller, categoria):

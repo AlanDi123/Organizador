@@ -10,10 +10,15 @@ import threading
 import logging
 from functools import lru_cache
 
-from model.ia_module import modulo_ia
-from model.data_manager import cargar_datos, guardar_gasto, eliminar_dato
-from model.data_manager import cargar_historial_gastos, obtener_estadisticas_gasto
-from model.data_manager import obtener_info_gasto_historial
+from ia_module import modulo_ia
+from data_manager import (
+    cargar_datos,
+    guardar_gasto,
+    eliminar_dato,
+    cargar_historial_gastos,
+    obtener_estadisticas_gasto,
+    obtener_info_gasto_historial,
+)
 from utils import ThreadManager
 
 # Configuración de logging
