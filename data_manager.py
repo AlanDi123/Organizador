@@ -9,7 +9,7 @@ import traceback
 import functools
 from functools import lru_cache
 from venv import logger
-from model.db_migration import run_migrations
+from db_migration import run_migrations
 
 # Rutas de la base de datos - ahora usando os.path para compatibilidad multiplataforma
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas.db')

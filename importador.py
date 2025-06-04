@@ -11,7 +11,7 @@ def importar_datos_directamente(datos_gastos, datos_ingresos, db_path=None):
     """
     Importa datos directamente a la base de datos sin usar las funciones existentes
     """
-    from model.data_manager import DBConnectionManager
+    from data_manager import DBConnectionManager
     
     # Obtener conexión para este hilo
     conn = DBConnectionManager.get_instance().get_connection()

@@ -6,7 +6,7 @@ import json
 import sqlite3
 from functools import lru_cache
 import logging
-from model.data_manager import cargar_datos, DBConnectionManager
+from data_manager import cargar_datos, DBConnectionManager
 
 # Configuración de logging
 logging.basicConfig(
