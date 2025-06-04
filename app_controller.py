@@ -8,19 +8,19 @@ from typing import Self
 from PIL import Image, ImageTk
 import requests
 from io import BytesIO
-from ui.dolar_widget import DolarFloatingWidgetRealtime
+from dolar_widget import DolarFloatingWidgetRealtime
 from datetime import datetime, timedelta
 import calendar
 import locale
-from ui.dashboard_financiero import DashboardFinanciero
+from dashboard_financiero import DashboardFinanciero
 import os
-from ui.presupuesto_frame import PresupuestoFrame
-from model.ia_module import modulo_ia
-from ui.frames.gastos_frame import GastosFrame
-from ui.frames.ingresos_frame import IngresosFrame
-from model.gastos import calcular_total_gastos
-from model.ingresos import calcular_total_ingresos
-from model.data_manager import cargar_datos, eliminar_todos_datos, sincronizar_historiales
+from presupuesto_frame import PresupuestoFrame
+from ia_module import modulo_ia
+from gastos_frame import GastosFrame
+from ingresos_frame import IngresosFrame
+from gastos import calcular_total_gastos
+from ingresos import calcular_total_ingresos
+from data_manager import cargar_datos, eliminar_todos_datos, sincronizar_historiales
 
 class AppController:
     def __init__(self, root):
@@ -163,7 +163,7 @@ class AppController:
         
         try:
             # Importar nuestras funciones
-            from model.db_migration import extract_data_from_old_version, backup_database
+            from db_migration import extract_data_from_old_version, backup_database
             
             # Crear nuevo importador simplificado inline
             def importar_datos_simples(gastos_list, ingresos_list):
@@ -916,7 +916,7 @@ class AppController:
     def abrir_analisis_categoria(self, categoria):
         """Abre el análisis detallado de una categoría"""
         try:
-            from ui.categoria_analisis import CategoriaAnalisis
+            from categoria_analisis import CategoriaAnalisis
             analisis = CategoriaAnalisis(self.root, self, categoria)
         except Exception as e:
             print(f"Error al abrir análisis de categoría: {e}")

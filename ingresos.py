@@ -1,5 +1,9 @@
 from datetime import datetime
-from model.data_manager import cargar_datos, obtener_estadisticas_concepto, cargar_historial_conceptos
+from data_manager import (
+    cargar_datos,
+    obtener_estadisticas_concepto,
+    cargar_historial_conceptos,
+)
 
 def calcular_total_ingresos():
     """
