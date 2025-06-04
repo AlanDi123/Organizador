@@ -22,8 +22,8 @@ logger = logging.getLogger('dashboard_financiero')
 
 matplotlib.use('TkAgg')  # Importante para evitar problemas en algunos sistemas
 
-from model.data_manager import cargar_datos
-from model.ia_module import modulo_ia
+from data_manager import cargar_datos
+from ia_module import modulo_ia
 
 # Lista global para mantener referencia a figuras y prevenir recolección de basura prematura
 _figuras_activas = []

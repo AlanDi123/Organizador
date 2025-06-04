@@ -37,7 +37,7 @@ def configurar_para_windows():
 # Importaciones envueltas en try-except para manejar errores de importación
 try:
     from utils import inicializar_db_wrapper, cerrar_conexiones_db
-    from ui.app_controller import AppController
+    from app_controller import AppController
 except ImportError as e:
     logger.error(f"Error al importar módulos: {e}")
     input("Presione Enter para salir...")
