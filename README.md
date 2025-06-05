@@ -67,6 +67,19 @@ Puede utilizar `cli.py` para obtener un resumen rápido de los totales:
 python cli.py --totales
 ```
 
+## Versión Android (experimental)
+Se incluye `kivy_main.py`, una interfaz simplificada basada en Kivy para
+dispositivos móviles. Para generar un APK utilice
+[Buildozer](https://github.com/kivy/buildozer) en un entorno Linux:
+
+```bash
+pip install buildozer
+buildozer -v android debug
+```
+
+El archivo `buildozer.spec` está preconfigurado y el APK generado se
+encontrará en el directorio `bin/`.
+
 ## Notas
 - La aplicación creará automáticamente una base de datos SQLite (`finanzas.db`) en el directorio de ejecución.
 - Si actualiza desde una versión anterior, la base de datos se migrará automáticamente para incluir los nuevos campos.
