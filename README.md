@@ -12,22 +12,17 @@ Esta aplicación de escritorio permite gestionar gastos e ingresos personales, c
 
 ## Estructura del Proyecto
 ```
-organizador_finanzas/
-├── main.py                  # Punto de entrada principal
-├── utils.py                 # Funciones de utilidad
-├── model/
-│   ├── data_manager.py      # Gestor de datos para la base de datos
-│   ├── gastos.py            # Lógica de negocio para gastos
-│   └── ingresos.py          # Lógica de negocio para ingresos
-└── ui/
-    ├── app_controller.py    # Controlador principal de la UI
-    └── frames/
-        ├── gastos_frame.py  # Frame para gestión de gastos
-        └── ingresos_frame.py # Frame para gestión de ingresos
+Organizador/
+├── main_app.py              # Punto de entrada principal
+├── gastos.py                # Funciones relacionadas con gastos
+├── ingresos.py              # Funciones relacionadas con ingresos
+├── data_manager.py          # Manejo de la base de datos SQLite
+├── utils.py                 # Utilidades varias
+└── tests/                   # Pruebas automáticas
 ```
 
 ## Cómo Usar
-1. Ejecute `main.py` para iniciar la aplicación.
+1. Ejecute `main_app.py` para iniciar la aplicación.
 2. Para agregar un gasto:
    - Ingrese el nombre y monto del gasto
    - La fecha de la próxima quincena se calcula automáticamente
@@ -47,22 +42,23 @@ organizador_finanzas/
    - Modo noche/día para la interfaz
 
 ## Requisitos
-- Python 3.6 o superior
-- Bibliotecas: tkinter, PIL (Pillow), requests, sqlite3 (incluido en Python)
+- **Python 3.6 o superior**. Si no lo tiene instalado descárguelo desde [python.org](https://www.python.org/downloads/).
+- **Conexión a Internet** para instalar las bibliotecas necesarias.
 
-## Instalación
-1. Clone o descargue este repositorio
-2. Instale las dependencias desde `requirements.txt`:
+## Instalación paso a paso
+1. Descargue este proyecto desde GitHub usando el botón **Code > Download ZIP** y descomprímalo en una carpeta.
+2. Abra una consola (Terminal en Linux/Mac o *Símbolo del sistema* en Windows) y cambie al directorio de la carpeta descargada.
+3. Instale las dependencias ejecutando:
    ```bash
    pip install -r requirements.txt
    ```
-3. Ejecute la aplicación:
-   ```
-   python main.py
+4. Inicie la aplicación con:
+   ```bash
+   python main_app.py
    ```
 
 ### Uso desde la línea de comandos
-Puede utilizar `cli.py` para obtener un resumen rápido de los totales:
+Si prefiere consultar solo los totales sin abrir la interfaz gráfica, ejecute `cli.py` de la siguiente manera:
 ```bash
 python cli.py --totales
 ```
