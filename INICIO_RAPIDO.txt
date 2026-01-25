@@ -1,0 +1,123 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║     💰 ORGANIZADOR DE GASTOS - VERSIÓN OPTIMIZADA PARA SISTEMAS ANTIGUOS   ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+🚀 EJECUCIÓN RÁPIDA:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LINUX MINT / UBUNTU / DEBIAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Primera vez:
+  $ chmod +x install.sh run.sh
+  $ ./install.sh
+
+Ejecuciones posteriores:
+  $ ./run.sh
+
+O directamente:
+  $ python3 start_app.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WINDOWS 7 / 10 / 11
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Descargar Python 3.9+ desde: https://www.python.org/downloads/
+   - IMPORTANTE: Marcar "Add Python to PATH"
+
+2. Abrir CMD o PowerShell en la carpeta del proyecto
+
+3. Ejecutar:
+   > run.bat
+
+O manualmente:
+  > python -m venv venv
+  > venv\Scripts\activate.bat
+  > pip install -r requirements.txt
+  > python start_app.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+macOS (Intel / Apple Silicon)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Primera vez:
+  $ chmod +x install.sh run.sh
+  $ ./install.sh
+
+Ejecuciones posteriores:
+  $ ./run.sh
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOLUCIÓN DE PROBLEMAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ "Python not found" (Windows)
+  → Descargar desde https://www.python.org/downloads/
+  → Reinstalar con "Add Python to PATH" marcado
+
+❌ "Command not found: python3" (Linux/macOS)
+  → Linux: sudo apt install python3
+  → macOS: brew install python3
+
+❌ Aplicación no inicia
+  → Verificar: python3 --version (debe ser 3.9+)
+  → Revisar permisos: chmod +x run.sh install.sh
+  → Ver logs: tail -f app.log
+
+❌ Caracteres especiales rotos (ñ, €, etc)
+  → La aplicación usa UTF-8 automáticamente
+  → Si persiste, actualizar locales: sudo locale-gen es_ES.UTF-8
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REQUISITOS MÍNIMOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Python 3.9 o superior
+✓ 512MB - 1GB RAM (mínimo)
+✓ 100MB espacio en disco
+✓ Internet (solo para OpenAI API, opcional)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARCHIVOS IMPORTANTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 Leer PRIMERO:
+  - README_OPTIMIZADO.md   → Guía completa
+  - COMPATIBILIDAD.md      → Detalles por SO
+  - OPTIMIZACION.md        → Cambios técnicos
+
+🚀 Para ejecutar:
+  - Linux/macOS: ./run.sh
+  - Windows:     run.bat
+  - Cualquiera:  python3 start_app.py
+
+💾 Datos guardados en:
+  - data/finanzas.db       (Base de datos)
+  - data/ia_config.json    (Configuración)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CARACTERÍSTICAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ Registra gastos e ingresos con categorización automática
+✨ Detección inteligente de gastos anómalos
+✨ Recomendaciones financieras personalizadas
+✨ Presupuestos inteligentes por categoría
+✨ Gráficos y estadísticas
+✨ Base de datos local (sin internet requerido)
+✨ Compatible con Windows, Linux, macOS
+✨ Optimizado para hardware antiguo (~50MB de dependencias)
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ¡Listo para ejecutar!                                    ║
+║                  Sigue los pasos según tu sistema operativo                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝

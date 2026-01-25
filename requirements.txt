@@ -1,5 +1,5 @@
-pillow
-requests
-matplotlib
-numpy
-tkcalendar
+pillow==10.0.0
+requests==2.31.0
+matplotlib==3.8.0
+tkcalendar==1.6.1
+openai==1.3.5
