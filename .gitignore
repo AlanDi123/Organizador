@@ -3,6 +3,7 @@ __pycache__/
 finanzas.db
 *.log
 *.png
+!assets/*.png
 *.ico
 *.db
 *~
