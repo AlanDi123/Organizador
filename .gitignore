@@ -7,3 +7,12 @@ finanzas.db
 *.db
 *~
 backups/
+venv/
+build/
+dist/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.coverage
+build_log.txt
+pyinstaller_build.log
