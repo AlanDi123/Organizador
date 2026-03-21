@@ -1,16 +1,19 @@
+# ===========================================
+# REQUIREMENTS PRINCIPALES - Cliente
+# ===========================================
+
 # Desktop (Tkinter)
 pillow==10.0.0
 requests==2.31.0
 matplotlib==3.8.0
 tkcalendar==1.6.1
 
-# Móvil (Kivy)
+# Móvil (Kivy) - solo para build APK
 kivy==2.3.0
 kivymd==1.2.0
 
-# Cloud Sync
-firebase-admin==6.2.0
-google-cloud-firestore==2.14.0
+# Cloud Sync - REST API (sin Admin SDK para cliente)
+# firebase-admin y google-cloud-firestore movidos a requirements-server.txt
 
 # Utilidades
 openai==1.3.5
@@ -23,3 +26,7 @@ buildozer==1.5.0
 
 # Testing
 pytest==7.4.0
+
+# ===========================================
+# NOTA: Para servidor/backend, usar requirements-server.txt
+# ===========================================

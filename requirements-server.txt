@@ -1,0 +1,13 @@
+# ===========================================
+# REQUIREMENTS SERVIDOR - Backend/Firebase Admin
+# ===========================================
+# Usar solo en entornos de servidor/backend
+# NO incluir en builds de cliente (APK/EXE)
+
+# Firebase Admin SDK (solo servidor)
+firebase-admin==6.2.0
+google-cloud-firestore==2.14.0
+
+# Utilidades compartidas
+requests==2.31.0
+python-dotenv==1.0.0

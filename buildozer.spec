@@ -3,7 +3,9 @@ title = Organizador de Gastos
 package.name = organizador_finanzas
 package.domain = org.alandin123
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,json,md,txt
+source.include_exts = py,png,jpg,kv,atlas,json
+source.exclude_dirs = tests,.git,.github,bin,dist,build,instaladores_ready,__pycache__,.venv,venv,venv_buildozer,.buildozer,src/core,src/controllers,src/views,installer,instaladores_ready
+source.exclude_patterns = *.exe,*.zip,*.tar.gz,*.spec,*.nsi,*.sh,*.bat,*.md,*.txt,*.log,*.pyc,*.pyo
 version = 1.0.0
 requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,pillow,Cython==0.29.37
 orientation = portrait

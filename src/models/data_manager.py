@@ -130,67 +130,119 @@ def inicializar_db():
         # Iniciar transacción
         conn.execute("BEGIN TRANSACTION")
         
+        import uuid
+        
         if not tabla_gastos_existe:
-            # Tabla de gastos con la columna es_historial
+            # Tabla de gastos con UUID y campos de sincronización
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS gastos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid TEXT NOT NULL UNIQUE,
                     nombre TEXT NOT NULL,
                     monto REAL NOT NULL CHECK(monto >= 0),
                     recurrente BOOLEAN DEFAULT 0,
                     fecha TEXT,
                     es_historial BOOLEAN DEFAULT 0,
+                    sync_status TEXT DEFAULT 'pending',
+                    dirty INTEGER DEFAULT 1,
+                    deleted_at TEXT,
+                    updated_at TEXT,
                     fecha_creacion TEXT
                 )
             ''')
-            # Actualizar fecha_creacion con valor actual
-            cursor.execute("UPDATE gastos SET fecha_creacion = datetime('now') WHERE fecha_creacion IS NULL")
         else:
-            # Verificar si la columna es_historial existe
+            # Verificar y añadir columna uuid si no existe
+            try:
+                cursor.execute("SELECT uuid FROM gastos LIMIT 1")
+            except sqlite3.OperationalError:
+                cursor.execute("ALTER TABLE gastos ADD COLUMN uuid TEXT")
+                # Generar UUIDs para registros existentes
+                cursor.execute("SELECT id FROM gastos WHERE uuid IS NULL")
+                for (row_id,) in cursor.fetchall():
+                    new_uuid = str(uuid.uuid4())
+                    cursor.execute("UPDATE gastos SET uuid = ? WHERE id = ?", (new_uuid, row_id))
+            
+            # Verificar y añadir campos de sincronización
+            for col in ['sync_status', 'dirty', 'deleted_at', 'updated_at']:
+                try:
+                    cursor.execute(f"SELECT {col} FROM gastos LIMIT 1")
+                except sqlite3.OperationalError:
+                    if col == 'sync_status':
+                        cursor.execute("ALTER TABLE gastos ADD COLUMN sync_status TEXT DEFAULT 'pending'")
+                    elif col == 'dirty':
+                        cursor.execute("ALTER TABLE gastos ADD COLUMN dirty INTEGER DEFAULT 1")
+                    elif col == 'deleted_at':
+                        cursor.execute("ALTER TABLE gastos ADD COLUMN deleted_at TEXT")
+                    elif col == 'updated_at':
+                        cursor.execute("ALTER TABLE gastos ADD COLUMN updated_at TEXT")
+            
+            # Verificar es_historial
             try:
                 cursor.execute("SELECT es_historial FROM gastos LIMIT 1")
             except sqlite3.OperationalError:
-                # La columna no existe, añadirla
                 cursor.execute("ALTER TABLE gastos ADD COLUMN es_historial BOOLEAN DEFAULT 0")
-                
-            # Verificar si la columna fecha_creacion existe
+
+            # Verificar fecha_creacion
             try:
                 cursor.execute("SELECT fecha_creacion FROM gastos LIMIT 1")
             except sqlite3.OperationalError:
-                # Añadir columna sin valor predeterminado
                 cursor.execute("ALTER TABLE gastos ADD COLUMN fecha_creacion TEXT")
-                # Actualizar registros existentes con fecha actual
                 cursor.execute("UPDATE gastos SET fecha_creacion = datetime('now') WHERE fecha_creacion IS NULL")
         
         if not tabla_ingresos_existe:
-            # Tabla de ingresos con la columna es_historial
+            # Tabla de ingresos con UUID y campos de sincronización
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS ingresos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid TEXT NOT NULL UNIQUE,
                     concepto TEXT NOT NULL,
                     monto REAL NOT NULL CHECK(monto >= 0),
                     fecha TEXT,
                     es_historial BOOLEAN DEFAULT 0,
+                    sync_status TEXT DEFAULT 'pending',
+                    dirty INTEGER DEFAULT 1,
+                    deleted_at TEXT,
+                    updated_at TEXT,
                     fecha_creacion TEXT
                 )
             ''')
-            # Actualizar fecha_creacion con valor actual
-            cursor.execute("UPDATE ingresos SET fecha_creacion = datetime('now') WHERE fecha_creacion IS NULL")
         else:
-            # Verificar si la columna es_historial existe
+            # Verificar y añadir columna uuid si no existe
+            try:
+                cursor.execute("SELECT uuid FROM ingresos LIMIT 1")
+            except sqlite3.OperationalError:
+                cursor.execute("ALTER TABLE ingresos ADD COLUMN uuid TEXT")
+                # Generar UUIDs para registros existentes
+                cursor.execute("SELECT id FROM ingresos WHERE uuid IS NULL")
+                for (row_id,) in cursor.fetchall():
+                    new_uuid = str(uuid.uuid4())
+                    cursor.execute("UPDATE ingresos SET uuid = ? WHERE id = ?", (new_uuid, row_id))
+            
+            # Verificar y añadir campos de sincronización
+            for col in ['sync_status', 'dirty', 'deleted_at', 'updated_at']:
+                try:
+                    cursor.execute(f"SELECT {col} FROM ingresos LIMIT 1")
+                except sqlite3.OperationalError:
+                    if col == 'sync_status':
+                        cursor.execute("ALTER TABLE ingresos ADD COLUMN sync_status TEXT DEFAULT 'pending'")
+                    elif col == 'dirty':
+                        cursor.execute("ALTER TABLE ingresos ADD COLUMN dirty INTEGER DEFAULT 1")
+                    elif col == 'deleted_at':
+                        cursor.execute("ALTER TABLE ingresos ADD COLUMN deleted_at TEXT")
+                    elif col == 'updated_at':
+                        cursor.execute("ALTER TABLE ingresos ADD COLUMN updated_at TEXT")
+            
+            # Verificar es_historial
             try:
                 cursor.execute("SELECT es_historial FROM ingresos LIMIT 1")
             except sqlite3.OperationalError:
-                # La columna no existe, añadirla
                 cursor.execute("ALTER TABLE ingresos ADD COLUMN es_historial BOOLEAN DEFAULT 0")
-                
-            # Verificar si la columna fecha_creacion existe
+
+            # Verificar fecha_creacion
             try:
                 cursor.execute("SELECT fecha_creacion FROM ingresos LIMIT 1")
             except sqlite3.OperationalError:
-                # Añadir columna sin valor predeterminado
                 cursor.execute("ALTER TABLE ingresos ADD COLUMN fecha_creacion TEXT")
-                # Actualizar registros existentes con fecha actual
                 cursor.execute("UPDATE ingresos SET fecha_creacion = datetime('now') WHERE fecha_creacion IS NULL")
         
         # Crear índices para mejorar rendimiento
@@ -370,21 +422,39 @@ def cargar_datos(tabla, incluir_historial=False):
         # Si no tiene la columna es_historial, cargar todos los datos
         if not tiene_columna_historial:
             if tabla == 'gastos':
-                cursor.execute('SELECT * FROM gastos')
+                cursor.execute('SELECT * FROM gastos WHERE deleted_at IS NULL')
             elif tabla == 'ingresos':
-                cursor.execute('SELECT * FROM ingresos')
+                cursor.execute('SELECT * FROM ingresos WHERE deleted_at IS NULL')
         else:
-            # Si tiene la columna, filtrar según el parámetro
+            # Si tiene la columna, filtrar según el parámetro y excluir eliminados
             if tabla == 'gastos':
                 if incluir_historial:
-                    cursor.execute('SELECT * FROM gastos ORDER BY fecha DESC')
+                    cursor.execute('''
+                        SELECT * FROM gastos 
+                        WHERE deleted_at IS NULL 
+                        ORDER BY updated_at DESC, fecha DESC
+                    ''')
                 else:
-                    cursor.execute('SELECT * FROM gastos WHERE es_historial = 0 OR es_historial IS NULL ORDER BY fecha DESC')
+                    cursor.execute('''
+                        SELECT * FROM gastos 
+                        WHERE (es_historial = 0 OR es_historial IS NULL) 
+                          AND deleted_at IS NULL 
+                        ORDER BY updated_at DESC, fecha DESC
+                    ''')
             elif tabla == 'ingresos':
                 if incluir_historial:
-                    cursor.execute('SELECT * FROM ingresos ORDER BY fecha DESC')
+                    cursor.execute('''
+                        SELECT * FROM ingresos 
+                        WHERE deleted_at IS NULL 
+                        ORDER BY updated_at DESC, fecha DESC
+                    ''')
                 else:
-                    cursor.execute('SELECT * FROM ingresos WHERE es_historial = 0 OR es_historial IS NULL ORDER BY fecha DESC')
+                    cursor.execute('''
+                        SELECT * FROM ingresos 
+                        WHERE (es_historial = 0 OR es_historial IS NULL) 
+                          AND deleted_at IS NULL 
+                        ORDER BY updated_at DESC, fecha DESC
+                    ''')
         
         datos = cursor.fetchall()
         return datos
@@ -605,31 +675,44 @@ def guardar_gasto(nombre, monto, recurrente, fecha=None):
         except sqlite3.OperationalError:
             tiene_columna_fecha = False
         
-        # Preparar el timestamp actual
+        # Preparar el timestamp actual y UUID
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Insertar el gasto
+        record_uuid = str(uuid.uuid4())
+
+        # Insertar el gasto con UUID y campos de sync
         if tiene_columna_historial and tiene_columna_fecha:
             cursor.execute(
-                'INSERT INTO gastos (nombre, monto, recurrente, fecha, es_historial, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?)',
-                (nombre, monto, recurrente, fecha, 0, now)  # No es historial
+                '''
+                INSERT INTO gastos (uuid, nombre, monto, recurrente, fecha, es_historial, sync_status, dirty, updated_at, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', 1, ?, ?)
+                ''',
+                (record_uuid, nombre, monto, recurrente, fecha, 0, now, now)
             )
         elif tiene_columna_historial:
             cursor.execute(
-                'INSERT INTO gastos (nombre, monto, recurrente, fecha, es_historial) VALUES (?, ?, ?, ?, ?)',
-                (nombre, monto, recurrente, fecha, 0)  # No es historial
+                '''
+                INSERT INTO gastos (uuid, nombre, monto, recurrente, fecha, es_historial, sync_status, dirty, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', 1, ?)
+                ''',
+                (record_uuid, nombre, monto, recurrente, fecha, 0, now)
             )
         elif tiene_columna_fecha:
             cursor.execute(
-                'INSERT INTO gastos (nombre, monto, recurrente, fecha, fecha_creacion) VALUES (?, ?, ?, ?, ?)',
-                (nombre, monto, recurrente, fecha, now)
+                '''
+                INSERT INTO gastos (uuid, nombre, monto, recurrente, fecha, sync_status, dirty, updated_at, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, 'pending', 1, ?, ?)
+                ''',
+                (record_uuid, nombre, monto, recurrente, fecha, now, now)
             )
         else:
             cursor.execute(
-                'INSERT INTO gastos (nombre, monto, recurrente, fecha) VALUES (?, ?, ?, ?)',
-                (nombre, monto, recurrente, fecha)
+                '''
+                INSERT INTO gastos (uuid, nombre, monto, recurrente, fecha, sync_status, dirty, updated_at) 
+                VALUES (?, ?, ?, ?, ?, 'pending', 1, ?)
+                ''',
+                (record_uuid, nombre, monto, recurrente, fecha, now)
             )
-        
+
         conn.commit()
         
         # Actualizar el historial
@@ -711,29 +794,42 @@ def guardar_ingreso(concepto, monto, fecha=None):
         except sqlite3.OperationalError:
             tiene_columna_fecha = False
         
-        # Preparar el timestamp actual
+        # Preparar el timestamp actual y UUID
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Insertar el ingreso
+        record_uuid = str(uuid.uuid4())
+
+        # Insertar el ingreso con UUID y campos de sync
         if tiene_columna_historial and tiene_columna_fecha:
             cursor.execute(
-                'INSERT INTO ingresos (concepto, monto, fecha, es_historial, fecha_creacion) VALUES (?, ?, ?, ?, ?)',
-                (concepto, monto, fecha, 0, now)  # No es historial
+                '''
+                INSERT INTO ingresos (uuid, concepto, monto, fecha, es_historial, sync_status, dirty, updated_at, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, 'pending', 1, ?, ?)
+                ''',
+                (record_uuid, concepto, monto, fecha, 0, now, now)
             )
         elif tiene_columna_historial:
             cursor.execute(
-                'INSERT INTO ingresos (concepto, monto, fecha, es_historial) VALUES (?, ?, ?, ?)',
-                (concepto, monto, fecha, 0)  # No es historial
+                '''
+                INSERT INTO ingresos (uuid, concepto, monto, fecha, es_historial, sync_status, dirty, updated_at) 
+                VALUES (?, ?, ?, ?, ?, 'pending', 1, ?)
+                ''',
+                (record_uuid, concepto, monto, fecha, 0, now)
             )
         elif tiene_columna_fecha:
             cursor.execute(
-                'INSERT INTO ingresos (concepto, monto, fecha, fecha_creacion) VALUES (?, ?, ?, ?)',
-                (concepto, monto, fecha, now)
+                '''
+                INSERT INTO ingresos (uuid, concepto, monto, fecha, sync_status, dirty, updated_at, fecha_creacion) 
+                VALUES (?, ?, ?, ?, 'pending', 1, ?, ?)
+                ''',
+                (record_uuid, concepto, monto, fecha, now, now)
             )
         else:
             cursor.execute(
-                'INSERT INTO ingresos (concepto, monto, fecha) VALUES (?, ?, ?)',
-                (concepto, monto, fecha)
+                '''
+                INSERT INTO ingresos (uuid, concepto, monto, fecha, sync_status, dirty, updated_at) 
+                VALUES (?, ?, ?, ?, 'pending', 1, ?)
+                ''',
+                (record_uuid, concepto, monto, fecha, now)
             )
         
         conn.commit()
@@ -807,14 +903,42 @@ def eliminar_dato(tabla, campo, valor):
                 cursor.execute("SELECT es_historial FROM ingresos LIMIT 1")
         except sqlite3.OperationalError:
             tiene_columna_historial = False
+
+        # Verificar si la tabla tiene la columna uuid para soft delete
+        tiene_uuid = True
+        try:
+            if tabla == 'gastos':
+                cursor.execute("SELECT uuid FROM gastos LIMIT 1")
+            elif tabla == 'ingresos':
+                cursor.execute("SELECT uuid FROM ingresos LIMIT 1")
+        except sqlite3.OperationalError:
+            tiene_uuid = False
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # Eliminar datos, evitando borrar registros históricos si es posible
-        if tiene_columna_historial:
+        # Soft delete: marcar como eliminado en lugar de borrar físicamente
+        if tiene_uuid and tiene_columna_historial:
+            # Usar UPDATE para soft delete con uuid
+            if tabla == 'gastos':
+                cursor.execute('''
+                    UPDATE gastos 
+                    SET deleted_at = ?, dirty = 1, sync_status = 'deleted', updated_at = ?
+                    WHERE uuid = ? AND (deleted_at IS NULL)
+                ''', (now, now, valor))
+            elif tabla == 'ingresos':
+                cursor.execute('''
+                    UPDATE ingresos 
+                    SET deleted_at = ?, dirty = 1, sync_status = 'deleted', updated_at = ?
+                    WHERE uuid = ? AND (deleted_at IS NULL)
+                ''', (now, now, valor))
+        elif tiene_columna_historial:
+            # Fallback: DELETE tradicional pero solo non-historial
             if tabla == 'gastos':
                 cursor.execute(f'DELETE FROM gastos WHERE {campo} = ? AND (es_historial = 0 OR es_historial IS NULL)', (valor,))
             elif tabla == 'ingresos':
                 cursor.execute(f'DELETE FROM ingresos WHERE {campo} = ? AND (es_historial = 0 OR es_historial IS NULL)', (valor,))
         else:
+            # Sin columnas especiales, DELETE tradicional
             if tabla == 'gastos':
                 cursor.execute(f'DELETE FROM gastos WHERE {campo} = ?', (valor,))
             elif tabla == 'ingresos':

@@ -55,16 +55,14 @@ class GastosService:
             fecha = datetime.now().strftime("%Y-%m-%d")
         
         exito = guardar_gasto(nombre, monto, recurrente, fecha)
-        
+
         if exito:
-            # Trigger sync si está disponible
+            # Encolar sync en segundo plano
             try:
-                sync = SyncEngine()
-                if sync.firebase.enabled:
-                    sync.force_sync()
-            except:
+                SyncEngine().enqueue_sync()
+            except Exception:
                 pass
-        
+
         return exito
     
     @staticmethod
@@ -122,16 +120,14 @@ class IngresosService:
             fecha = datetime.now().strftime("%Y-%m-%d")
         
         exito = guardar_ingreso(concepto, monto, fecha)
-        
+
         if exito:
-            # Trigger sync
+            # Encolar sync en segundo plano
             try:
-                sync = SyncEngine()
-                if sync.firebase.enabled:
-                    sync.force_sync()
-            except:
+                SyncEngine().enqueue_sync()
+            except Exception:
                 pass
-        
+
         return exito
     
     @staticmethod

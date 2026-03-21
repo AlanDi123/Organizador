@@ -37,17 +37,31 @@ class SyncEngine:
         if self._initialized:
             return
         self._initialized = True
-        
+
         self.firebase = FirebaseClient()
         self.sync_queue = []
         self.is_syncing = False
-        
+
         # Mapeo de tablas locales a colecciones cloud
         self.collection_map = {
             'gastos': 'gastos',
             'ingresos': 'ingresos',
             'presupuesto': 'presupuesto'
         }
+
+    def enqueue_sync(self):
+        """
+        Encola una sincronización para ejecutar en segundo plano.
+        Si ya hay un sync en progreso, lo agrega a la cola.
+        """
+        if self.is_syncing:
+            self.sync_queue.append(datetime.now().isoformat())
+            logger.info("Sync en progreso, agregado a la cola")
+            return
+        
+        # Iniciar sync en thread separado
+        import threading
+        threading.Thread(target=self.sync_all, daemon=True).start()
     
     def sync_all(self) -> Dict[str, int]:
         """
@@ -194,29 +208,18 @@ class SyncEngine:
         return result
     
     def _get_pending_local_records(self, table: str) -> List[Dict[str, Any]]:
-        """Obtiene registros locales pendientes de sync"""
+        """Obtiene registros locales pendientes de sync por dirty/sync_status"""
         try:
             conn = DBConnectionManager.get_instance().get_connection()
             cursor = conn.cursor()
-            
-            # Obtener último sync timestamp
-            cursor.execute('''
-                SELECT last_sync FROM sync_metadata 
-                WHERE record_type = ? 
-                ORDER BY last_sync DESC LIMIT 1
-            ''', (table,))
-            
-            row = cursor.fetchone()
-            if row:
-                last_sync = row[0]
-                # Obtener registros modificados después del último sync
-                cursor.execute(f'''
-                    SELECT * FROM {table}
-                    WHERE fecha_creacion > ? OR fecha_creacion IS NULL
-                ''', (last_sync,))
-            else:
-                # No hay sync previo, obtener todos
-                cursor.execute(f'SELECT * FROM {table}')
+
+            # Obtener registros con dirty=1 o sync_status pending/deleted
+            cursor.execute(f'''
+                SELECT * FROM {table}
+                WHERE dirty = 1
+                   OR sync_status IN ('pending', 'deleted')
+                ORDER BY updated_at DESC
+            ''')
             
             columns = [description[0] for description in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -232,22 +235,35 @@ class SyncEngine:
             'ingresos': RecordType.INGRESO,
             'presupuesto': RecordType.PRESUPUESTO
         }
+
+        # Usar UUID como identificador único
+        record_id = str(local_data.get('uuid', ''))
         
+        # Obtener timestamp de updated_at o fallback a now
+        updated_at = local_data.get('updated_at')
+        if updated_at:
+            try:
+                timestamp = datetime.fromisoformat(updated_at)
+            except (ValueError, TypeError):
+                timestamp = datetime.now()
+        else:
+            timestamp = datetime.now()
+
         return CloudRecord(
-            id=str(local_data.get('id', '')),
+            id=record_id,
             record_type=record_type_map.get(table, RecordType.GASTO),
             user_id=self.firebase.get_user_id() or '',
             data=local_data,
-            timestamp=datetime.now(),
+            timestamp=timestamp,
             device_id=self.firebase.get_device_id()
         )
     
-    def _get_local_record(self, table: str, record_id: str) -> Optional[Dict[str, Any]]:
-        """Obtiene un registro local por ID"""
+    def _get_local_record(self, table: str, record_uuid: str) -> Optional[Dict[str, Any]]:
+        """Obtiene un registro local por UUID"""
         try:
             conn = DBConnectionManager.get_instance().get_connection()
             cursor = conn.cursor()
-            cursor.execute(f'SELECT * FROM {table} WHERE id = ?', (record_id,))
+            cursor.execute(f'SELECT * FROM {table} WHERE uuid = ?', (record_uuid,))
             row = cursor.fetchone()
 
             if row is None:
@@ -330,10 +346,9 @@ class SyncEngine:
         return True
     
     def _has_local_changes(self, table: str, local: Dict, cloud: CloudRecord) -> bool:
-        """Verifica si hay cambios locales no sincronizados"""
-        # Comparar timestamps
-        local_time = local.get('fecha_creacion', '')
-        cloud_time = cloud.data.get('fecha_creacion', '')
+        """Verifica si hay cambios locales no sincronizados comparando updated_at"""
+        local_time = local.get('updated_at', '')
+        cloud_time = cloud.data.get('updated_at', '')
         return local_time != cloud_time
     
     def _resolve_conflict_in_favor(self, cloud_record: CloudRecord, table: str) -> bool:
@@ -342,19 +357,27 @@ class SyncEngine:
         # Por ahora, cloud siempre gana
         return True
     
-    def _mark_as_synced(self, table: str, record_id: str):
-        """Marca un registro como sincronizado"""
+    def _mark_as_synced(self, table: str, record_uuid: str):
+        """Marca un registro como sincronizado limpiando dirty y sync_status"""
         try:
             conn = DBConnectionManager.get_instance().get_connection()
             cursor = conn.cursor()
-            
+
+            # Actualizar registro para limpiar flags de sync
+            cursor.execute(f'''
+                UPDATE {table}
+                SET dirty = 0, sync_status = 'synced', updated_at = ?
+                WHERE uuid = ?
+            ''', (datetime.now().isoformat(), record_uuid))
+
+            # Actualizar metadata
             cursor.execute('''
                 INSERT OR REPLACE INTO sync_metadata (record_id, record_type, last_sync, sync_status)
                 VALUES (?, ?, ?, ?)
-            ''', (record_id, table, datetime.now().isoformat(), 'synced'))
-            
+            ''', (record_uuid, table, datetime.now().isoformat(), 'synced'))
+
             conn.commit()
-            
+
         except Exception as e:
             logger.error(f"Error al marcar como sync: {e}")
     
