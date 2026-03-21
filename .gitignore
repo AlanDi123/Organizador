@@ -1,19 +1,82 @@
+# Python
 __pycache__/
 *.py[cod]
-finanzas.db
-*.log
-*.png
-!assets/*.png
-*.ico
-*.db
-*~
-backups/
-venv/
-build/
-dist/
-.eggs/
+*$py.class
+*.so
+.Python
 *.egg-info/
-.pytest_cache/
-.coverage
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
 build_log.txt
 pyinstaller_build.log
+
+# Database (local)
+*.db
+finanzas.db
+
+# Environment variables (except template)
+.env
+!.env.example
+
+# Firebase credentials (SENSITIVE - NEVER COMMIT)
+firebase_credentials.json
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
+
+# Build artifacts
+.buildozer/
+bin/
+*.apk
+*.aab
+*.jar
+
+# PyInstaller
+*.spec.backup
+build/
+dist/
+
+# Backup files
+backups/
+*backup*.db
+*backup*.json
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Mobile
+*.keystore
+android.keystore
+*.jks
+
+# Assets (keep only essential ones)
+*.png
+!assets/*.png
+!assets/icon.png
+*.ico
+*.jpg
+!assets/*.jpg
+
+# Temp files
+*~
+.TemporaryItems/

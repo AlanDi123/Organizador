@@ -1,0 +1,45 @@
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | venv
+  | venv_buildozer
+  | .buildozer
+  | bin
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip = [
+    "venv",
+    "venv_buildozer",
+    ".venv",
+    "build",
+    "dist",
+    ".buildozer",
+    "bin"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
