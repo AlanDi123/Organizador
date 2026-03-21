@@ -13,20 +13,21 @@ import threading
 import traceback
 import functools
 from functools import lru_cache
+from pathlib import Path
 from src.utils.db_migration import run_migrations
 from src.utils.logger import get_logger
 from src.utils.validators import Validator, ValidationError
 from src.utils.decorators import timer, retry, safe_execute
+from src.utils.paths import db_file, backup_file, db_dir
 from src.config.env_config import DB_PATH
 
 # Configurar logging
 logger = get_logger('data_manager')
 
-# Rutas de la base de datos
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DB_FILE = os.path.join(PROJECT_ROOT, 'data', 'finanzas.db')
-BACKUP_FILE = os.path.join(PROJECT_ROOT, 'data', 'finanzas_historial_backup.json')
-DB_DIR = os.path.join(PROJECT_ROOT, 'data')
+# Rutas de la base de datos (usando paths.py para Android compatibility)
+DB_FILE = str(db_file())
+BACKUP_FILE = str(backup_file())
+DB_DIR = str(db_dir())
 
 # Control de recursión para evitar bucles infinitos
 EN_PROCESO_DE_RESTAURACION = False

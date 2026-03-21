@@ -248,13 +248,14 @@ class SyncEngine:
             conn = DBConnectionManager.get_instance().get_connection()
             cursor = conn.cursor()
             cursor.execute(f'SELECT * FROM {table} WHERE id = ?', (record_id,))
-            
-            if cursor.rowcount == 0:
+            row = cursor.fetchone()
+
+            if row is None:
                 return None
-            
+
             columns = [description[0] for description in cursor.description]
-            return dict(zip(columns, cursor.fetchone()))
-            
+            return dict(zip(columns, row))
+
         except Exception as e:
             logger.error(f"Error al obtener registro local: {e}")
             return None

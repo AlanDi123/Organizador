@@ -8,13 +8,15 @@ import os
 import shutil
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
+from pathlib import Path
 from src.utils.logger import get_logger
 from src.utils.decorators import retry, timer
+from src.utils.paths import db_file
 
 logger = get_logger(__name__)
 
-# Ruta de la base de datos
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'finanzas.db')
+# Ruta de la base de datos (usando paths.py para Android compatibility)
+DB_FILE = str(db_file())
 
 # Versión actual del esquema
 CURRENT_SCHEMA_VERSION = 2

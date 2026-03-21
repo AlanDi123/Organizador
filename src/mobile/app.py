@@ -15,8 +15,9 @@ from kivy.clock import Clock
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.screenmanager import MDScreenManager
-from kivymd.uix.navigationdrawer import MDNavigationDrawer
+from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
 from kivymd.uix.list import OneLineAvatarListItem, IconLeftWidget
+from kivymd.uix.boxlayout import MDBoxLayout
 
 from src.core.services import GastosService, IngresosService, AuthService, PresupuestoService
 from src.cloud.sync_engine import SyncEngine
@@ -32,15 +33,18 @@ class OrganizadorApp(MDApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title = "Organizador de Gastos"
-        self.icon = 'assets/icon.png'
-        
+        # Verificar si el icono existe antes de asignarlo
+        icon_path = 'assets/icon.png'
+        if os.path.exists(icon_path):
+            self.icon = icon_path
+
         # Servicios
         self.gastos_service = GastosService()
         self.ingresos_service = IngresosService()
         self.auth_service = AuthService()
         self.presupuesto_service = PresupuestoService()
         self.sync_engine = SyncEngine()
-        
+
         # Estado
         self.user_logged = False
         self.current_balance = 0.0
@@ -50,35 +54,31 @@ class OrganizadorApp(MDApp):
         self.theme_cls.primary_palette = "Pink"
         self.theme_cls.accent_palette = "Purple"
         self.theme_cls.theme_style = "Light"
-        
+
         # Configurar ventana
         Window.size = (360, 640)  # Tamaño default para testing
         Window.minimum_width, Window.minimum_height = 300, 500
-        
-        # Cargar KV
-        self.load_kv_files()
-        
-        # Crear screen manager
-        self.sm = MDScreenManager()
-        self.setup_screens()
-        
-        # Crear navigation drawer
+
+        # Cargar KV y obtener root
+        root = Builder.load_string(self.get_main_kv())
+        self.sm = root.ids.screen_manager
+        self.nav_drawer = root.ids.nav_drawer
         self.setup_navigation_drawer()
-        
-        return self.sm
-    
-    def load_kv_files(self):
-        """Carga archivos KV"""
-        # En producción, cargar desde archivos .kv separados
-        Builder.load_string(self.get_main_kv())
-    
+
+        return root
+
     def get_main_kv(self) -> str:
         """Retorna el KV principal embebido"""
         return '''
 #:import NoTransition kivy.uix.screenmanager.NoTransition
 
-MDScreenManager:
-    transition: NoTransition()
+MDNavigationLayout:
+    MDScreenManager:
+        id: screen_manager
+        transition: NoTransition()
+
+    MDNavigationDrawer:
+        id: nav_drawer
     
     MDScreen:
         name: 'login'
@@ -362,9 +362,9 @@ MDScreenManager:
     
     def setup_navigation_drawer(self):
         """Configura el navigation drawer"""
-        self.nav_drawer = MDNavigationDrawer()
         self.nav_drawer.set_state("close")
-        
+        self.nav_drawer.clear_widgets()
+
         # Header
         header = MDBoxLayout(
             orientation='vertical',
@@ -372,7 +372,7 @@ MDScreenManager:
             height=dp(200),
             padding=(dp(20), dp(20))
         )
-        
+
         from kivymd.uix.label import MDLabel
         header.add_widget(MDLabel(
             text="Usuario",
@@ -384,12 +384,12 @@ MDScreenManager:
             font_style="Caption",
             theme_text_color="Secondary"
         ))
-        
+
         self.nav_drawer.add_widget(header)
-        
+
         # Menu items
         from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
-        
+
         items = [
             ("home", "home", "Inicio"),
             ("gastos", "cart", "Gastos"),
@@ -397,18 +397,18 @@ MDScreenManager:
             ("dashboard", "chart-pie", "Dashboard"),
             ("settings", "cog", "Configuración"),
         ]
-        
+
         for screen_name, icon, text in items:
             item = OneLineIconListItem(text=text, on_release=lambda x, s=screen_name: self.go_to_screen(s))
             item.add_widget(IconLeftWidget(icon=icon))
             self.nav_drawer.add_widget(item)
-        
+
         # Logout
         logout_item = OneLineIconListItem(text="Cerrar Sesión", on_release=lambda x: self.logout())
         logout_item.add_widget(IconLeftWidget(icon="logout"))
         self.nav_drawer.add_widget(logout_item)
-        
-        self.sm.add_widget(self.nav_drawer)
+
+        # No se agrega al ScreenManager; ya vive dentro del MDNavigationLayout del KV
     
     def on_start(self):
         """Se ejecuta al iniciar la app"""
@@ -426,13 +426,14 @@ MDScreenManager:
     
     def login(self):
         """Intenta iniciar sesión"""
-        email = self.root.ids.email_field.text if hasattr(self.root, 'ids') and 'email_field' in self.root.ids else ""
-        password = self.root.ids.password_field.text if hasattr(self.root, 'ids') and 'password_field' in self.root.ids else ""
-        
+        login_ids = self.sm.get_screen('login').ids
+        email = login_ids.email_field.text.strip()
+        password = login_ids.password_field.text.strip()
+
         if not email or not password:
             self.show_snackbar("Completa email y contraseña")
             return
-        
+
         if self.auth_service.login(email, password):
             self.user_logged = True
             self.show_snackbar("¡Bienvenido!")
@@ -477,70 +478,79 @@ MDScreenManager:
             total_gastos = self.gastos_service.calcular_total()
             total_ingresos = self.ingresos_service.calcular_total()
             self.current_balance = total_ingresos - total_gastos
-            
-            # Actualizar UI
-            if hasattr(self.root, 'ids') and 'balance_label' in self.root.ids:
-                self.root.ids.balance_label.text = f"$ {self.current_balance:,.2f}"
-            
-            # Actualizar último sync
-            sync_status = self.sync_engine.get_sync_status()
-            if sync_status.get('last_sync'):
-                last_sync = sync_status['last_sync']
-                if hasattr(self.root, 'ids') and 'last_sync_label' in self.root.ids:
-                    self.root.ids.last_sync_label.text = f"Última sync: {last_sync}"
-            
+
+            # Actualizar UI - acceder a través de la pantalla home
+            try:
+                home_ids = self.sm.get_screen('home').ids
+                home_ids.balance_label.text = f"$ {self.current_balance:,.2f}"
+                
+                # Actualizar último sync
+                sync_status = self.sync_engine.get_sync_status()
+                if sync_status.get('last_sync'):
+                    last_sync = sync_status['last_sync']
+                    home_ids.last_sync_label.text = f"Última sync: {last_sync}"
+            except KeyError:
+                pass  # La pantalla home no está disponible aún
+
             # Cargar transacciones recientes
             self.load_recent_transactions()
-            
+
         except Exception as e:
             logger.error(f"Error al actualizar balance: {e}")
     
     def load_recent_transactions(self):
         """Carga transacciones recientes en la lista"""
         try:
-            # Limpiar lista
-            if hasattr(self.root, 'ids') and 'recent_transactions' in self.root.ids:
-                lista = self.root.ids.recent_transactions
+            # Limpiar lista - acceder a través de la pantalla home
+            try:
+                home_ids = self.sm.get_screen('home').ids
+                lista = home_ids.recent_transactions
                 lista.clear_widgets()
-                
+
                 # Obtener últimos movimientos
                 gastos = self.gastos_service.obtener_todos()[-5:]
                 ingresos = self.ingresos_service.obtener_todos()[-5:]
-                
+
                 # Combinar y ordenar
                 todos = []
                 for g in gastos:
                     todos.append(('gasto', g))
                 for i in ingresos:
                     todos.append(('ingreso', i))
-                
+
                 todos.sort(key=lambda x: x[1].fecha_creacion, reverse=True)
-                
+
                 # Agregar a la lista
                 for tipo, item in todos[:10]:
                     from kivymd.uix.list import OneLineListItem, IconLeftWidget
                     icon = "cart" if tipo == 'gasto' else "cash"
                     color = "red" if tipo == 'gasto' else "green"
                     signo = "-" if tipo == 'gasto' else "+"
-                    
+
                     list_item = OneLineListItem(
                         text=f"{item.nombre if tipo == 'gasto' else item.concepto} - ${item.monto:.2f}"
                     )
                     list_item.add_widget(IconLeftWidget(icon=icon, theme_text_color="Custom", text_color=(1, 0, 0, 1) if tipo == 'gasto' else (0, 1, 0, 1)))
                     lista.add_widget(list_item)
-                
+            except KeyError:
+                pass  # La pantalla home no está disponible aún
+
         except Exception as e:
             logger.error(f"Error al cargar transacciones: {e}")
     
     def sync_data(self):
         """Ejecuta sincronización de datos"""
         self.show_snackbar("Sincronizando...")
-        
+
         def do_sync():
-            result = self.sync_engine.sync_all()
-            Clock.schedule_once(lambda dt: self.show_snackbar(f"Sync: {result['uploaded']} subidos, {result['downloaded']} bajados"))
+            result = self.sync_engine.sync_all() or {}
+            Clock.schedule_once(
+                lambda dt: self.show_snackbar(
+                    f"Sync: {result.get('uploaded', 0)} subidos, {result.get('downloaded', 0)} bajados"
+                )
+            )
             Clock.schedule_once(lambda dt: self.update_balance())
-        
+
         import threading
         threading.Thread(target=do_sync, daemon=True).start()
     
@@ -555,24 +565,28 @@ MDScreenManager:
     def guardar_gasto(self):
         """Guarda un gasto"""
         try:
-            if hasattr(self.root, 'ids'):
-                nombre = self.root.ids.gasto_nombre.text
-                monto_str = self.root.ids.gasto_monto.text
-                recurrente = self.root.ids.gasto_recurrente.active if hasattr(self.root.ids, 'gasto_recurrente') else False
-                
-                if not nombre or not monto_str:
-                    self.show_snackbar("Completa todos los campos")
-                    return
-                
-                monto = float(monto_str.replace(',', '.'))
-                
-                if self.gastos_service.crear(nombre, monto, recurrente):
-                    self.show_snackbar("¡Gasto guardado!")
-                    self.root.ids.gasto_nombre.text = ""
-                    self.root.ids.gasto_monto.text = ""
-                    self.update_balance()
-                else:
-                    self.show_snackbar("Error al guardar")
+            try:
+                gastos_ids = self.sm.get_screen('gastos').ids
+                nombre = gastos_ids.gasto_nombre.text
+                monto_str = gastos_ids.gasto_monto.text
+                recurrente = gastos_ids.gasto_recurrente.active if hasattr(gastos_ids, 'gasto_recurrente') else False
+            except KeyError:
+                self.show_snackbar("Error: pantalla de gastos no disponible")
+                return
+
+            if not nombre or not monto_str:
+                self.show_snackbar("Completa todos los campos")
+                return
+
+            monto = float(monto_str.replace(',', '.'))
+
+            if self.gastos_service.crear(nombre, monto, recurrente):
+                self.show_snackbar("¡Gasto guardado!")
+                gastos_ids.gasto_nombre.text = ""
+                gastos_ids.gasto_monto.text = ""
+                self.update_balance()
+            else:
+                self.show_snackbar("Error al guardar")
         except Exception as e:
             logger.error(f"Error al guardar gasto: {e}")
             self.show_snackbar("Error al guardar gasto")
@@ -584,23 +598,27 @@ MDScreenManager:
     def guardar_ingreso(self):
         """Guarda un ingreso"""
         try:
-            if hasattr(self.root, 'ids'):
-                concepto = self.root.ids.ingreso_concepto.text
-                monto_str = self.root.ids.ingreso_monto.text
-                
-                if not concepto or not monto_str:
-                    self.show_snackbar("Completa todos los campos")
-                    return
-                
-                monto = float(monto_str.replace(',', '.'))
-                
-                if self.ingresos_service.crear(concepto, monto):
-                    self.show_snackbar("¡Ingreso guardado!")
-                    self.root.ids.ingreso_concepto.text = ""
-                    self.root.ids.ingreso_monto.text = ""
-                    self.update_balance()
-                else:
-                    self.show_snackbar("Error al guardar")
+            try:
+                ingresos_ids = self.sm.get_screen('ingresos').ids
+                concepto = ingresos_ids.ingreso_concepto.text
+                monto_str = ingresos_ids.ingreso_monto.text
+            except KeyError:
+                self.show_snackbar("Error: pantalla de ingresos no disponible")
+                return
+
+            if not concepto or not monto_str:
+                self.show_snackbar("Completa todos los campos")
+                return
+
+            monto = float(monto_str.replace(',', '.'))
+
+            if self.ingresos_service.crear(concepto, monto):
+                self.show_snackbar("¡Ingreso guardado!")
+                ingresos_ids.ingreso_concepto.text = ""
+                ingresos_ids.ingreso_monto.text = ""
+                self.update_balance()
+            else:
+                self.show_snackbar("Error al guardar")
         except Exception as e:
             logger.error(f"Error al guardar ingreso: {e}")
             self.show_snackbar("Error al guardar ingreso")
