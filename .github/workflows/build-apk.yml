@@ -31,20 +31,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instalar dependencias del sistema
+      - name: Instalar dependencias del sistema (minimal)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git \
-            ffmpeg \
             cmake \
             libsdl2-dev \
             libsdl2-image-dev \
             libsdl2-mixer-dev \
             libsdl2-ttf-dev \
-            libgstreamer1.0-dev \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
             libgtk-3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
@@ -55,15 +51,13 @@ jobs:
             libffi-dev \
             python3-dev \
             libtiff5-dev \
-            libjpeg8-dev \
             zlib1g-dev \
-            libfreetype6-dev \
-            liblcms2-dev \
-            libxml2-dev \
-            libxslt1-dev \
             wget \
             openjdk-17-jdk \
-            ant
+            ant \
+            libncurses5 \
+            libncurses5-dev \
+            libbz2-dev
 
       - name: Instalar dependencias de Python
         run: |
@@ -115,20 +109,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Instalar dependencias del sistema
+      - name: Instalar dependencias del sistema (minimal)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git \
-            ffmpeg \
             cmake \
             libsdl2-dev \
             libsdl2-image-dev \
             libsdl2-mixer-dev \
             libsdl2-ttf-dev \
-            libgstreamer1.0-dev \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
             libgtk-3-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
@@ -139,15 +129,13 @@ jobs:
             libffi-dev \
             python3-dev \
             libtiff5-dev \
-            libjpeg8-dev \
             zlib1g-dev \
-            libfreetype6-dev \
-            liblcms2-dev \
-            libxml2-dev \
-            libxslt1-dev \
             wget \
             openjdk-17-jdk \
-            ant
+            ant \
+            libncurses5 \
+            libncurses5-dev \
+            libbz2-dev
 
       - name: Instalar dependencias de Python
         run: |
