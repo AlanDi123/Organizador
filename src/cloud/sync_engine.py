@@ -179,7 +179,7 @@ class SyncEngine:
                             if self._has_local_changes(local_table, local_record, cloud_record):
                                 result['conflicts'] += 1
                                 # Resolver conflicto
-                                if self._resolve_conflict_in favor(cloud_record, local_table):
+                                if self._resolve_conflict_in_favor(cloud_record, local_table):
                                     self._update_local_record(local_table, cloud_record)
                                     result['count'] += 1
                             # Si no hay cambios locales, no hacer nada (ya está sync)
