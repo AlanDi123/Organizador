@@ -40,9 +40,15 @@ class OrganizadorApp(MDApp):
         super().__init__(**kwargs)
         self.title = "Organizador de Gastos"
         # Verificar si el icono existe antes de asignarlo
-        icon_path = 'assets/icon.png'
-        if os.path.exists(icon_path):
-            self.icon = icon_path
+        # En Android, los recursos se empaquetan, verificar existencia real
+        icon_paths = ['assets/icon.png', 'icon.png', '../assets/icon.png']
+        for icon_path in icon_paths:
+            if os.path.exists(icon_path):
+                self.icon = icon_path
+                Logger.info(f"Icono encontrado: {icon_path}")
+                break
+        else:
+            Logger.warning("Icono no encontrado, usando icono por defecto de Kivy")
 
         # Servicios - inicializar como None, se crean en build()
         self.gastos_service = None

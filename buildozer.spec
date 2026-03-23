@@ -4,7 +4,7 @@ package.name = organizador_finanzas
 package.domain = org.alandin123
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
-source.exclude_dirs = tests,.git,.github,bin,dist,build,instaladores_ready,__pycache__,.venv,venv,venv_buildozer,.buildozer,src/core,src/controllers,src/views,installer,instaladores_ready
+source.exclude_dirs = tests,.git,.github,bin,dist,build,instaladores_ready,__pycache__,.venv,venv,venv_buildozer,.buildozer,installer,instaladores_ready
 source.exclude_patterns = *.exe,*.zip,*.tar.gz,*.spec,*.nsi,*.sh,*.bat,*.md,*.txt,*.log,*.pyc,*.pyo
 version = 1.0.0
 
