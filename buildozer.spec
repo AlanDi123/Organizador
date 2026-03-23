@@ -11,6 +11,9 @@ version = 1.0.0
 # Requirements MINIMOS para APK (evitar libs de servidor)
 requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
 
+# Entry point EXPLÍCITO para Android (main.py contiene run_mobile_app)
+android.entrypoint = main
+
 orientation = portrait
 fullscreen = 0
 
