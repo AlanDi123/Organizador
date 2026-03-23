@@ -4,8 +4,11 @@ Punto de entrada para la versión Android/iOS
 """
 
 import os
+import sys
 import logging
+import traceback
 from datetime import datetime
+from threading import Thread
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -25,6 +28,9 @@ from src.cloud.sync_engine import SyncEngine
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Detección de plataforma Android
+IS_ANDROID = sys.platform == "android"
 
 
 class OrganizadorApp(MDApp):
@@ -50,22 +56,46 @@ class OrganizadorApp(MDApp):
         self.current_balance = 0.0
     
     def build(self):
-        """Construye la aplicación"""
-        self.theme_cls.primary_palette = "Pink"
-        self.theme_cls.accent_palette = "Purple"
-        self.theme_cls.theme_style = "Light"
+        """Construye la aplicación con manejo robusto de errores"""
+        try:
+            self.theme_cls.primary_palette = "Pink"
+            self.theme_cls.accent_palette = "Purple"
+            self.theme_cls.theme_style = "Light"
 
-        # Configurar ventana
-        Window.size = (360, 640)  # Tamaño default para testing
-        Window.minimum_width, Window.minimum_height = 300, 500
+            # Configurar ventana (solo en desktop, Android ignora esto)
+            if not IS_ANDROID:
+                Window.size = (360, 640)
+                Window.minimum_width, Window.minimum_height = 300, 500
 
-        # Cargar KV y obtener root
-        root = Builder.load_string(self.get_main_kv())
-        self.sm = root.ids.screen_manager
-        self.nav_drawer = root.ids.nav_drawer
-        self.setup_navigation_drawer()
+            # Cargar KV y obtener root
+            root = Builder.load_string(self.get_main_kv())
+            self.sm = root.ids.screen_manager
+            self.nav_drawer = root.ids.nav_drawer
+            self.setup_navigation_drawer()
 
-        return root
+            return root
+
+        except Exception as e:
+            logger.error(f"FATAL BUILD ERROR: {e}")
+            logger.error(traceback.format_exc())
+            # Mostrar error en pantalla en lugar de crashear
+            from kivy.uix.label import Label
+            from kivy.uix.scrollview import ScrollView
+            from kivy.uix.boxlayout import BoxLayout
+            
+            error_layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
+            error_layout.add_widget(Label(
+                text=f"[color=ff0000]FATAL ERROR[/color]\n\n{str(e)}\n\n{traceback.format_exc()}",
+                markup=True,
+                halign='left',
+                valign='top',
+                size_hint_y=None,
+                height=400
+            ))
+            
+            scroll = ScrollView(size_hint=(1, 1))
+            scroll.add_widget(error_layout)
+            return scroll
 
     def get_main_kv(self) -> str:
         """Retorna el KV principal embebido"""
@@ -411,21 +441,34 @@ MDNavigationLayout:
         # No se agrega al ScreenManager; ya vive dentro del MDNavigationLayout del KV
     
     def on_start(self):
-        """Se ejecuta al iniciar la app"""
+        """Se ejecuta al iniciar la app - TODO en hilo separado para evitar ANR"""
         logger.info("App iniciada")
-        self.check_auth_status()
+        # Mover operaciones de red a hilo separado para evitar ANR
+        Thread(target=self._init_app_background, daemon=True).start()
     
+    def _init_app_background(self):
+        """Inicialización en segundo plano (red, auth, sync)"""
+        try:
+            self.check_auth_status()
+        except Exception as e:
+            logger.error(f"Error en inicialización background: {e}")
+            Clock.schedule_once(lambda dt: self.show_snackbar(f"Error inicio: {str(e)}"), 0)
+
     def check_auth_status(self):
-        """Verifica estado de autenticación"""
-        if self.auth_service.esta_autenticado():
-            self.user_logged = True
-            self.go_to_screen('home')
-            self.update_balance()
-        else:
-            self.go_to_screen('login')
+        """Verifica estado de autenticación (ejecutar en hilo separado)"""
+        try:
+            if self.auth_service.esta_autenticado():
+                self.user_logged = True
+                Clock.schedule_once(lambda dt: self.go_to_screen('home'), 0)
+                Clock.schedule_once(lambda dt: self.update_balance(), 0)
+            else:
+                Clock.schedule_once(lambda dt: self.go_to_screen('login'), 0)
+        except Exception as e:
+            logger.error(f"Error en check_auth_status: {e}")
+            Clock.schedule_once(lambda dt: self.go_to_screen('login'), 0)
     
     def login(self):
-        """Intenta iniciar sesión"""
+        """Intenta iniciar sesión - auth en hilo separado"""
         login_ids = self.sm.get_screen('login').ids
         email = login_ids.email_field.text.strip()
         password = login_ids.password_field.text.strip()
@@ -434,13 +477,21 @@ MDNavigationLayout:
             self.show_snackbar("Completa email y contraseña")
             return
 
-        if self.auth_service.login(email, password):
-            self.user_logged = True
-            self.show_snackbar("¡Bienvenido!")
-            self.go_to_screen('home')
-            self.update_balance()
-        else:
-            self.show_snackbar("Error de autenticación")
+        # Ejecutar auth en hilo separado
+        def do_login():
+            try:
+                if self.auth_service.login(email, password):
+                    self.user_logged = True
+                    Clock.schedule_once(lambda dt: self.show_snackbar("¡Bienvenido!"), 0)
+                    Clock.schedule_once(lambda dt: self.go_to_screen('home'), 0)
+                    Clock.schedule_once(lambda dt: self.update_balance(), 0)
+                else:
+                    Clock.schedule_once(lambda dt: self.show_snackbar("Error de autenticación"), 0)
+            except Exception as e:
+                logger.error(f"Error en login: {e}")
+                Clock.schedule_once(lambda dt: self.show_snackbar(f"Error: {str(e)}"), 0)
+
+        Thread(target=do_login, daemon=True).start()
     
     def register(self):
         """Registra nuevo usuario"""
@@ -622,6 +673,13 @@ MDNavigationLayout:
         except Exception as e:
             logger.error(f"Error al guardar ingreso: {e}")
             self.show_snackbar("Error al guardar ingreso")
+
+    def on_stop(self):
+        """Limpieza al cerrar la app"""
+        logger.info("App cerrándose")
+        # Cancelar sync periódico si existe
+        if getattr(self, "_sync_event", None):
+            self._sync_event.cancel()
 
 
 def run_mobile_app():

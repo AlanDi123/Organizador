@@ -7,10 +7,16 @@ source.include_exts = py,png,jpg,kv,atlas,json
 source.exclude_dirs = tests,.git,.github,bin,dist,build,instaladores_ready,__pycache__,.venv,venv,venv_buildozer,.buildozer,src/core,src/controllers,src/views,installer,instaladores_ready
 source.exclude_patterns = *.exe,*.zip,*.tar.gz,*.spec,*.nsi,*.sh,*.bat,*.md,*.txt,*.log,*.pyc,*.pyo
 version = 1.0.0
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,pillow,Cython==0.29.37
+
+# Requirements MINIMOS para APK (evitar libs de servidor)
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
+
 orientation = portrait
 fullscreen = 0
+
+# Permisos ESENCIALES para sync y DB
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
+
 android.api = 33
 android.minapi = 24
 android.ndk = 25b
