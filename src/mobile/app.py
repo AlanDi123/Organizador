@@ -21,9 +21,9 @@ from kivymd.uix.screenmanager import MDScreenManager
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
 from kivymd.uix.list import OneLineAvatarListItem, IconLeftWidget
 from kivymd.uix.boxlayout import MDBoxLayout
+from kivy.logger import Logger
 
 from src.core.services import GastosService, IngresosService, AuthService, PresupuestoService
-from src.cloud.sync_engine import SyncEngine
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -35,7 +35,7 @@ IS_ANDROID = sys.platform == "android"
 
 class OrganizadorApp(MDApp):
     """Aplicación principal para móviles"""
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title = "Organizador de Gastos"
@@ -44,45 +44,74 @@ class OrganizadorApp(MDApp):
         if os.path.exists(icon_path):
             self.icon = icon_path
 
-        # Servicios
-        self.gastos_service = GastosService()
-        self.ingresos_service = IngresosService()
-        self.auth_service = AuthService()
-        self.presupuesto_service = PresupuestoService()
-        self.sync_engine = SyncEngine()
+        # Servicios - inicializar como None, se crean en build()
+        self.gastos_service = None
+        self.ingresos_service = None
+        self.auth_service = None
+        self.presupuesto_service = None
+        self.sync_engine = None  # Lazy init después del build
 
         # Estado
         self.user_logged = False
         self.current_balance = 0.0
-    
+
     def build(self):
         """Construye la aplicación con manejo robusto de errores"""
+        Logger.info("=" * 50)
+        Logger.info("INICIANDO ORGANIZADOR FINANZAS")
+        Logger.info("=" * 50)
+
         try:
+            # 1. Configurar tema
+            Logger.info("Configurando tema MD...")
             self.theme_cls.primary_palette = "Pink"
             self.theme_cls.accent_palette = "Purple"
             self.theme_cls.theme_style = "Light"
 
-            # Configurar ventana (solo en desktop, Android ignora esto)
+            # 2. Configurar ventana (solo en desktop, Android ignora esto)
             if not IS_ANDROID:
                 Window.size = (360, 640)
                 Window.minimum_width, Window.minimum_height = 300, 500
+            Logger.info("Ventana configurada")
 
-            # Cargar KV y obtener root
+            # 3. Inicializar servicios básicos (sin Firebase/Sync)
+            Logger.info("Inicializando servicios...")
+            self.gastos_service = GastosService()
+            self.ingresos_service = IngresosService()
+            self.auth_service = AuthService()
+            self.presupuesto_service = PresupuestoService()
+            Logger.info("Servicios inicializados")
+
+            # 4. Cargar KV
+            Logger.info("Cargando archivo KV...")
             root = Builder.load_string(self.get_main_kv())
+            Logger.info("KV cargado")
+
+            # 5. Configurar UI
             self.sm = root.ids.screen_manager
             self.nav_drawer = root.ids.nav_drawer
             self.setup_navigation_drawer()
+            Logger.info("UI configurada")
+
+            Logger.info("=== APP INICIADA EXITOSAMENTE ===")
+
+            # 6. Inicializar Firebase/Sync en hilo separado (después del build)
+            Clock.schedule_once(self._lazy_init_cloud, 0.1)
 
             return root
 
         except Exception as e:
-            logger.error(f"FATAL BUILD ERROR: {e}")
-            logger.error(traceback.format_exc())
+            Logger.error("=" * 50)
+            Logger.error("CRASH DURANTE BUILD")
+            Logger.error(f"Error: {e}")
+            Logger.error(f"Traceback: {traceback.format_exc()}")
+            Logger.error("=" * 50)
+
             # Mostrar error en pantalla en lugar de crashear
             from kivy.uix.label import Label
             from kivy.uix.scrollview import ScrollView
             from kivy.uix.boxlayout import BoxLayout
-            
+
             error_layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
             error_layout.add_widget(Label(
                 text=f"[color=ff0000]FATAL ERROR[/color]\n\n{str(e)}\n\n{traceback.format_exc()}",
@@ -92,10 +121,25 @@ class OrganizadorApp(MDApp):
                 size_hint_y=None,
                 height=400
             ))
-            
+
             scroll = ScrollView(size_hint=(1, 1))
             scroll.add_widget(error_layout)
             return scroll
+
+    def _lazy_init_cloud(self, dt):
+        """Inicializa Firebase y Sync en hilo separado para evitar ANR"""
+        def init_cloud():
+            try:
+                Logger.info("Inicializando Firebase/Sync...")
+                from src.cloud.sync_engine import SyncEngine
+                self.sync_engine = SyncEngine()
+                Logger.info("Firebase/Sync inicializados")
+            except Exception as e:
+                Logger.error(f"Error inicializando cloud: {e}")
+                Logger.error(traceback.format_exc())
+                # No mostrar snackbar aquí, puede que la UI no esté lista
+
+        Thread(target=init_cloud, daemon=True).start()
 
     def get_main_kv(self) -> str:
         """Retorna el KV principal embebido"""
@@ -526,6 +570,10 @@ MDNavigationLayout:
     def update_balance(self):
         """Actualiza el balance mostrado"""
         try:
+            if not self.gastos_service or not self.ingresos_service:
+                logger.warning("Servicios no inicializados aún")
+                return
+
             total_gastos = self.gastos_service.calcular_total()
             total_ingresos = self.ingresos_service.calcular_total()
             self.current_balance = total_ingresos - total_gastos
@@ -534,12 +582,13 @@ MDNavigationLayout:
             try:
                 home_ids = self.sm.get_screen('home').ids
                 home_ids.balance_label.text = f"$ {self.current_balance:,.2f}"
-                
-                # Actualizar último sync
-                sync_status = self.sync_engine.get_sync_status()
-                if sync_status.get('last_sync'):
-                    last_sync = sync_status['last_sync']
-                    home_ids.last_sync_label.text = f"Última sync: {last_sync}"
+
+                # Actualizar último sync (solo si sync_engine está disponible)
+                if self.sync_engine:
+                    sync_status = self.sync_engine.get_sync_status()
+                    if sync_status.get('last_sync'):
+                        last_sync = sync_status['last_sync']
+                        home_ids.last_sync_label.text = f"Última sync: {last_sync}"
             except KeyError:
                 pass  # La pantalla home no está disponible aún
 
@@ -591,16 +640,26 @@ MDNavigationLayout:
     
     def sync_data(self):
         """Ejecuta sincronización de datos"""
+        if not self.sync_engine:
+            self.show_snackbar("Sincronización no disponible aún")
+            return
+
         self.show_snackbar("Sincronizando...")
 
         def do_sync():
-            result = self.sync_engine.sync_all() or {}
-            Clock.schedule_once(
-                lambda dt: self.show_snackbar(
-                    f"Sync: {result.get('uploaded', 0)} subidos, {result.get('downloaded', 0)} bajados"
+            try:
+                result = self.sync_engine.sync_all() or {}
+                Clock.schedule_once(
+                    lambda dt: self.show_snackbar(
+                        f"Sync: {result.get('uploaded', 0)} subidos, {result.get('downloaded', 0)} bajados"
+                    )
                 )
-            )
-            Clock.schedule_once(lambda dt: self.update_balance())
+                Clock.schedule_once(lambda dt: self.update_balance())
+            except Exception as e:
+                logger.error(f"Error en sync: {e}")
+                Clock.schedule_once(
+                    lambda dt: self.show_snackbar(f"Error sync: {str(e)}")
+                )
 
         import threading
         threading.Thread(target=do_sync, daemon=True).start()
