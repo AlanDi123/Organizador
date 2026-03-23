@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 # Detección de plataforma Android
 IS_ANDROID = sys.platform == "android"
 
+# Modo diagnóstico: python -c "import os; os.environ['DIAGNOSTIC_MODE']='1'"
+DIAGNOSTIC_MODE = os.environ.get('DIAGNOSTIC_MODE', '0') == '1'
+
 
 class OrganizadorApp(MDApp):
     """Aplicación principal para móviles"""
@@ -65,14 +68,35 @@ class OrganizadorApp(MDApp):
         """Construye la aplicación con manejo robusto de errores"""
         Logger.info("=" * 50)
         Logger.info("INICIANDO ORGANIZADOR FINANZAS")
+        Logger.info(f"DIAGNOSTIC_MODE: {DIAGNOSTIC_MODE}")
         Logger.info("=" * 50)
 
+        # MODO DIAGNÓSTICO: Retorna UI minimalista para testear KivyMD
+        if DIAGNOSTIC_MODE:
+            Logger.warning("=== MODO DIAGNÓSTICO ACTIVADO ===")
+            from kivymd.uix.label import MDLabel
+            from kivymd.uix.boxlayout import MDBoxLayout
+            layout = MDBoxLayout(orientation='vertical')
+            layout.add_widget(MDLabel(
+                text="✅ KivyMD Funciona!\n\nSi ves esto, el problema está en tu KV o servicios.",
+                halign="center",
+                valign="center",
+                font_style="H5"
+            ))
+            layout.add_widget(MDLabel(
+                text=f"Platform: {sys.platform}\nAndroid: {IS_ANDROID}",
+                halign="center",
+                theme_text_color="Secondary"
+            ))
+            return layout
+
         try:
-            # 1. Configurar tema
+            # 1. Configurar tema (puede fallar si kivymd no está disponible)
             Logger.info("Configurando tema MD...")
             self.theme_cls.primary_palette = "Pink"
             self.theme_cls.accent_palette = "Purple"
             self.theme_cls.theme_style = "Light"
+            Logger.info("Tema configurado")
 
             # 2. Configurar ventana (solo en desktop, Android ignora esto)
             if not IS_ANDROID:
@@ -80,28 +104,47 @@ class OrganizadorApp(MDApp):
                 Window.minimum_width, Window.minimum_height = 300, 500
             Logger.info("Ventana configurada")
 
-            # 3. Inicializar servicios básicos (sin Firebase/Sync)
-            Logger.info("Inicializando servicios...")
-            self.gastos_service = GastosService()
-            self.ingresos_service = IngresosService()
-            self.auth_service = AuthService()
-            self.presupuesto_service = PresupuestoService()
-            Logger.info("Servicios inicializados")
-
-            # 4. Cargar KV
+            # 3. Cargar KV PRIMERO (antes de servicios, para detectar errores de UI)
             Logger.info("Cargando archivo KV...")
-            root = Builder.load_string(self.get_main_kv())
-            Logger.info("KV cargado")
+            kv_string = self.get_main_kv()
+            Logger.debug(f"KV string length: {len(kv_string)}")
+            root = Builder.load_string(kv_string)
+            Logger.info("KV cargado exitosamente")
 
-            # 5. Configurar UI
+            # 4. Verificar IDs requeridos
+            Logger.info("Verificando widgets requeridos...")
+            if not hasattr(root, 'ids'):
+                raise AttributeError("Root widget no tiene 'ids' attribute")
+            if 'screen_manager' not in root.ids:
+                raise KeyError("Falta 'screen_manager' en root.ids")
+            if 'nav_drawer' not in root.ids:
+                raise KeyError("Falta 'nav_drawer' en root.ids")
+            Logger.info("Widgets verificados")
+
+            # 5. Configurar referencias UI
             self.sm = root.ids.screen_manager
             self.nav_drawer = root.ids.nav_drawer
             self.setup_navigation_drawer()
             Logger.info("UI configurada")
 
+            # 6. Inicializar servicios (puede fallar en Android sin DB)
+            Logger.info("Inicializando servicios...")
+            try:
+                self.gastos_service = GastosService()
+                self.ingresos_service = IngresosService()
+                self.auth_service = AuthService()
+                self.presupuesto_service = PresupuestoService()
+                Logger.info("Servicios inicializados")
+            except Exception as svc_error:
+                Logger.warning(f"Servicios fallaron (continuar sin ellos): {svc_error}")
+                self.gastos_service = None
+                self.ingresos_service = None
+                self.auth_service = None
+                self.presupuesto_service = None
+
             Logger.info("=== APP INICIADA EXITOSAMENTE ===")
 
-            # 6. Inicializar Firebase/Sync en hilo separado (después del build)
+            # 7. Inicializar Firebase/Sync en hilo separado (después del build)
             Clock.schedule_once(self._lazy_init_cloud, 0.1)
 
             return root
@@ -118,18 +161,24 @@ class OrganizadorApp(MDApp):
             from kivy.uix.scrollview import ScrollView
             from kivy.uix.boxlayout import BoxLayout
 
-            error_layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
-            error_layout.add_widget(Label(
-                text=f"[color=ff0000]FATAL ERROR[/color]\n\n{str(e)}\n\n{traceback.format_exc()}",
+            error_layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
+            error_label = Label(
+                text=f"[color=ff0000][b]FATAL ERROR[/b][/color]\n\n[color=ffff00]{str(e)}[/color]\n\n{traceback.format_exc()}",
                 markup=True,
                 halign='left',
                 valign='top',
                 size_hint_y=None,
-                height=400
-            ))
+                height=800,
+                padding_x=dp(10),
+                font_size=dp(12)
+            )
+            error_label.bind(texture_size=error_label.setter(size))
+            error_layout.add_widget(error_label)
 
-            scroll = ScrollView(size_hint=(1, 1))
+            scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
             scroll.add_widget(error_layout)
+            
+            Logger.error("Mostrando pantalla de error en lugar de crash")
             return scroll
 
     def _lazy_init_cloud(self, dt):
