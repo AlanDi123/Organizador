@@ -12,7 +12,7 @@ version = 1.0.0
 requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
 
 # Entry point EXPLÍCITO para Android (main.py contiene run_mobile_app)
-android.entrypoint = main
+entrypoint = main.py
 
 orientation = portrait
 fullscreen = 0
