@@ -68,9 +68,18 @@ jobs:
 
       - name: Configurar Buildozer
         run: |
-          # Asegurar que buildozer.spec tenga configuraciones correctas
-          sed -i 's/^package.domain.*/package.domain = org.alandin123/' buildozer.spec
+          # Fix 9: Verificar que el archivo existe primero
+          if [ ! -f buildozer.spec ]; then
+            echo "ERROR: buildozer.spec no encontrado"
+            exit 1
+          fi
+          echo "buildozer.spec encontrado correctamente"
+          head -5 buildozer.spec
+          
+          # Aplicar configuraciones solo si son diferentes
+          sed -i 's/^package\.domain.*/package.domain = org.alandin123/' buildozer.spec
           sed -i 's/^version.*/version = 1.0.0/' buildozer.spec
+          echo "Buildozer configurado correctamente"
 
       - name: Ejecutar Buildozer (Debug APK)
         run: |
