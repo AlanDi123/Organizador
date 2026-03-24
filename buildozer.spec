@@ -9,7 +9,8 @@ source.exclude_patterns = *.exe,*.zip,*.tar.gz,*.spec,*.nsi,*.sh,*.bat,*.md,*.tx
 version = 1.0.0
 
 # Requirements MINIMOS para APK (evitar libs de servidor)
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests
+# pyjnius>=2.0.0 para soporte Python 3.11 (long ya no existe en Python 3)
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,requests,pyjnius>=2.0.0
 
 # Entry point EXPLÍCITO para Android (main.py contiene run_mobile_app)
 entrypoint = main.py
