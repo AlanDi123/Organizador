@@ -113,6 +113,28 @@ class AppController:
         
         # Crear botón para el widget del dólar
         self.dolar_widget = None
+
+        # Fix 7: Auto-sync periódico cada 30 segundos
+        self._iniciar_auto_sync()
+
+    def _iniciar_auto_sync(self):
+        """Inicia el ciclo de auto-sync cada 30 segundos"""
+        def _sync_tick():
+            try:
+                from src.cloud.sync_engine import SyncEngine
+                engine = SyncEngine()
+                if engine.firebase.enabled and engine.firebase.is_authenticated():
+                    engine.enqueue_sync()
+            except Exception as e:
+                logger.debug(f"Auto-sync tick: {e}")
+            finally:
+                # Volver a schedulear (solo si la ventana sigue activa)
+                try:
+                    self.root.after(30000, _sync_tick)
+                except Exception:
+                    pass
+
+        self.root.after(30000, _sync_tick)
     
     def update_colores(self):
         """Actualiza los esquemas de color desde la configuración"""
