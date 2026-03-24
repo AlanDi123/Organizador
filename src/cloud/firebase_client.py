@@ -301,40 +301,48 @@ class FirebaseClient:
 
         try:
             url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{collection}:runQuery"
-            
-            # Construir query con filtros
+
+            # Fix 5: Construir query con filtros - formato correcto para Firestore REST API
             structured_query = {
                 "from": [{"collectionId": collection}],
                 "where": {
-                    "fieldPath": "user_id",
-                    "op": "EQUAL",
-                    "value": {"stringValue": self.user_id}
+                    "fieldFilter": {  # Fix 5: wrapper requerido
+                        "field": {"fieldPath": "user_id"},
+                        "op": "EQUAL",
+                        "value": {"stringValue": self.user_id}
+                    }
                 }
             }
-            
+
             # Agregar filtros adicionales
             if filters:
                 composite_filters = []
                 composite_filters.append({
-                    "fieldPath": "user_id",
-                    "op": "EQUAL",
-                    "value": {"stringValue": self.user_id}
+                    "fieldFilter": {  # Fix 5: wrapper fieldFilter
+                        "field": {"fieldPath": "user_id"},
+                        "op": "EQUAL",
+                        "value": {"stringValue": self.user_id}
+                    }
                 })
                 for field, value in filters.items():
                     composite_filters.append({
-                        "fieldPath": field,
-                        "op": "EQUAL",
-                        "value": {"stringValue": str(value)} if not isinstance(value, bool) else {"booleanValue": value}
+                        "fieldFilter": {  # Fix 5: wrapper fieldFilter
+                            "field": {"fieldPath": field},
+                            "op": "EQUAL",
+                            "value": {"stringValue": str(value)} if not isinstance(value, bool) else {"booleanValue": value}
+                        }
                     })
-                
+
                 structured_query["where"] = {
-                    "op": "AND",
-                    "filters": composite_filters
+                    "compositeFilter": {  # Fix 5: wrapper compositeFilter
+                        "op": "AND",
+                        "filters": composite_filters
+                    }
                 }
 
             r = requests.post(url, json={"structuredQuery": structured_query}, headers=self._headers(), timeout=15)
             r.raise_for_status()
-            
+
             data = r.json()
             results = []
             for doc in data:
@@ -345,7 +353,7 @@ class FirebaseClient:
                     name = doc["document"].get("name", "")
                     record["doc_id"] = name.split("/")[-1] if name else None
                     results.append(record)
-            
+
             return results
 
         except requests.exceptions.RequestException as e:
@@ -363,14 +371,15 @@ class FirebaseClient:
         try:
             url = self._get_firestore_url(collection, doc_id)
             firestore_data = self._to_firestore_format(data)
-            
-            # PATCH con mask para actualizar solo campos específicos
+
+            # Fix 13: PATCH con mask - Firestore REST usa updateMask.fieldPaths como lista
             mask_paths = list(data.keys())
+            params = [("updateMask.fieldPaths", field) for field in mask_paths]
             r = requests.patch(
-                url, 
+                url,
                 json={"fields": firestore_data},
                 headers=self._headers(),
-                params={"updateMask": ",".join(mask_paths)},
+                params=params,
                 timeout=15
             )
             r.raise_for_status()

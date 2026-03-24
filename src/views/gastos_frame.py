@@ -464,8 +464,8 @@ class GastosFrame(tk.Frame):
         else:
             # Verificar nuevamente después de 100ms
             self.after(100, self._verificar_carga_datos)
-    
-    @lru_cache(maxsize=128)
+
+    # Fix 2: Eliminado @lru_cache - self no es hashable en método de instancia
     def cargar_nombres_gastos_historicos(self):
         """Carga el historial de nombres de gastos para el combobox"""
         try:

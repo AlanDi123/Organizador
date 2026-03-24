@@ -95,14 +95,18 @@ class DashboardFinanciero(tk.Toplevel):
         try:
             logger.info("Iniciando carga de datos para el dashboard")
             # Obtener datos de gastos e ingresos
-            self.gastos = cargar_datos("gastos")
-            self.ingresos = cargar_datos("ingresos")
-            
-            # Inicializar otras variables de datos
-            self.total_gastos = sum(gasto[2] for gasto in self.gastos if gasto[2] is not None and isinstance(gasto[2], (int, float)) and gasto[2] > 0)
-            self.total_ingresos = sum(ingreso[2] for ingreso in self.ingresos if ingreso[2] is not None and isinstance(ingreso[2], (int, float)) and ingreso[2] > 0)
+            gastos_raw = cargar_datos("gastos")
+            ingresos_raw = cargar_datos("ingresos")
+
+            # Fix 3: CRÍTICO - procesar a dicts ANTES de usarlos
+            self.gastos = modulo_ia.procesar_gastos(gastos_raw)
+            self.ingresos = modulo_ia.procesar_ingresos(ingresos_raw)
+
+            # Ahora son dicts, acceder por key
+            self.total_gastos = sum(g['monto'] for g in self.gastos if g.get('monto'))
+            self.total_ingresos = sum(i['monto'] for i in self.ingresos if i.get('monto'))
             self.balance = self.total_ingresos - self.total_gastos
-            
+
             # Marcar que la carga de datos ha terminado
             self.carga_exitosa.set()
             logger.info(f"Datos cargados exitosamente: {len(self.gastos)} gastos, {len(self.ingresos)} ingresos")
@@ -114,7 +118,7 @@ class DashboardFinanciero(tk.Toplevel):
             self.total_gastos = 0
             self.total_ingresos = 0
             self.balance = 0
-            
+
             # Marcar carga completada para no bloquear la UI
             self.carga_exitosa.set()
     
@@ -383,39 +387,28 @@ class DashboardFinanciero(tk.Toplevel):
             # Filtrar datos según el periodo seleccionado
             periodo = self.periodo_var.get()
             fecha_inicio = None
-            
+
             if periodo == "Último mes":
                 fecha_inicio = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             elif periodo == "Últimos 3 meses":
                 fecha_inicio = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
             elif periodo == "Último año":
                 fecha_inicio = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-            
-            # Filtrar datos con validación de formato de fecha
+
+            # Fix 3: Filtrado simplificado - ya son dicts procesados
             if fecha_inicio:
-                gastos_filtrados = []
-                for g in self.gastos:
-                    try:
-                        # Asegurar que la fecha tenga el formato correcto
-                        if 'fecha' in g and g['fecha'] and g['fecha'] >= fecha_inicio:
-                            gastos_filtrados.append(g)
-                    except (TypeError, ValueError):
-                        # Ignorar datos con formato de fecha inválido
-                        continue
+                gastos_filtrados = [
+                    g for g in self.gastos
+                    if g.get('fecha', '') >= fecha_inicio
+                ]
+                ingresos_filtrados = [
+                    i for i in self.ingresos
+                    if i.get('fecha', '') >= fecha_inicio
+                ]
             else:
                 gastos_filtrados = self.gastos
-                
-            if fecha_inicio:
-                ingresos_filtrados = []
-                for i in self.ingresos:
-                    try:
-                        if 'fecha' in i and i['fecha'] and i['fecha'] >= fecha_inicio:
-                            ingresos_filtrados.append(i)
-                    except (TypeError, ValueError):
-                        continue
-            else:
                 ingresos_filtrados = self.ingresos
-            
+
             # Actualizar componentes
             self.actualizar_kpis(gastos_filtrados, ingresos_filtrados)
             self.actualizar_grafico_izquierdo(gastos_filtrados)

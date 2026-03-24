@@ -5,6 +5,7 @@ Gestor de datos mejorado con validación automática y type hints.
 
 import sqlite3
 import os
+import uuid  # Fix 1: agregado para guardar_gasto y guardar_ingreso
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any
 import json
@@ -276,8 +277,7 @@ def inicializar_db():
         return False
 
 #@measure_execution_time
-@lru_cache(maxsize=32)
-
+# Fix 1: Eliminado @lru_cache - gastos_antiguos es lista (unhashable), rompe en runtime
 def importar_gastos(gastos_antiguos):
     """Importa gastos desde una base de datos antigua"""
     from datetime import datetime
@@ -772,11 +772,12 @@ def guardar_ingreso(concepto, monto, fecha=None):
                 return False
         else:
             fecha = datetime.now().strftime("%Y-%m-%d")
-        
-        conn = sqlite3.connect(DB_FILE)
+
+        # Fix 1: Usar DBConnectionManager en lugar de conexión directa
+        conn = DBConnectionManager.get_instance().get_connection()
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        
+
         # Iniciar transacción
         conn.execute("BEGIN TRANSACTION")
         
@@ -831,10 +832,10 @@ def guardar_ingreso(concepto, monto, fecha=None):
                 ''',
                 (record_uuid, concepto, monto, fecha, now)
             )
-        
+
         conn.commit()
-        conn.close()
-        
+        # Fix 1: ELIMINAR conn.close() - el manager gestiona el ciclo de vida de la conexión
+
         # Actualizar el historial
         _actualizar_historial_concepto(concepto)
         

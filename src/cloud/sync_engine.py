@@ -148,11 +148,13 @@ class SyncEngine:
                         
                         # Guardar en cloud
                         doc_id = self.firebase.save_record(cloud_collection, cloud_record.to_firestore(), cloud_record.id)
-                        
+
                         if doc_id:
                             result['count'] += 1
-                            self._mark_as_synced(local_table, record['id'])
-                            
+                            # Fix 5: Usar uuid en lugar de id
+                            record_uuid = record.get('uuid') or str(record.get('id', ''))
+                            self._mark_as_synced(local_table, record_uuid)
+
                             # Log sync
                             self._log_sync('upload', local_table, record['id'], True)
                         else:
@@ -213,17 +215,25 @@ class SyncEngine:
             conn = DBConnectionManager.get_instance().get_connection()
             cursor = conn.cursor()
 
-            # Obtener registros con dirty=1 o sync_status pending/deleted
-            cursor.execute(f'''
-                SELECT * FROM {table}
-                WHERE dirty = 1
-                   OR sync_status IN ('pending', 'deleted')
-                ORDER BY updated_at DESC
-            ''')
-            
+            # Fix 11: Verificar si existen las columnas de sync
+            cursor.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in cursor.fetchall()}
+
+            if 'dirty' in cols and 'sync_status' in cols:
+                # Tabla con columnas de sync
+                cursor.execute(f'''
+                    SELECT * FROM {table}
+                    WHERE (dirty = 1 OR sync_status IN ('pending', 'deleted'))
+                      AND deleted_at IS NULL
+                    ORDER BY updated_at DESC
+                ''')
+            else:
+                # Fix 11: Tabla sin columnas de sync - devolver todos los registros activos
+                cursor.execute(f'SELECT * FROM {table} ORDER BY id DESC LIMIT 100')
+
             columns = [description[0] for description in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
+
         except Exception as e:
             logger.error(f"Error al obtener registros pendientes: {e}")
             return []

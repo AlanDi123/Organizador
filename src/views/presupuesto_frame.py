@@ -108,11 +108,13 @@ class PresupuestoFrame(tk.Toplevel):
         try:
             # Inicializar el sistema de presupuesto
             self.sistema_presupuesto = PresupuestoInteligente()
-            
-            # Cargar datos históricos
+
+            # Fix 4: Cargar y procesar datos a dicts
             from src.models.data_manager import cargar_datos
-            self.gastos_recientes = cargar_datos("gastos") or []
-            self.ingresos_recientes = cargar_datos("ingresos") or []
+            gastos_raw = cargar_datos("gastos") or []
+            ingresos_raw = cargar_datos("ingresos") or []
+            self.gastos_recientes = modulo_ia.procesar_gastos(gastos_raw)
+            self.ingresos_recientes = modulo_ia.procesar_ingresos(ingresos_raw)
             
             # Obtener presupuesto actual
             self.presupuesto_actual = self.sistema_presupuesto.cargar_presupuesto_actual() or {}
