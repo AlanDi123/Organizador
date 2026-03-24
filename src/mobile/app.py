@@ -490,60 +490,70 @@ MDNavigationLayout:
         pass
     
     def setup_navigation_drawer(self):
-        """Configura el navigation drawer"""
+        """Configura el navigation drawer con estructura correcta de KivyMD 1.x"""
         self.nav_drawer.set_state("close")
         self.nav_drawer.clear_widgets()
 
-        # Header
-        header = MDBoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            height=dp(200),
-            padding=(dp(20), dp(20))
+        # Fix 14: Importar componentes correctos de KivyMD 1.x
+        from kivymd.uix.navigationdrawer import (
+            MDNavigationDrawerMenu,
+            MDNavigationDrawerHeader,
+            MDNavigationDrawerItem,
+            MDNavigationDrawerDivider,
         )
 
-        from kivymd.uix.label import MDLabel
-        header.add_widget(MDLabel(
-            text="Usuario",
-            font_style="H6",
-            theme_text_color="Primary"
-        ))
-        header.add_widget(MDLabel(
-            text="email@ejemplo.com",
-            font_style="Caption",
-            theme_text_color="Secondary"
+        # Menú principal (wrapper requerido por KivyMD 1.x)
+        menu = MDNavigationDrawerMenu()
+
+        # Header
+        menu.add_widget(MDNavigationDrawerHeader(
+            title="Organizador",
+            title_color=self.theme_cls.primary_color,
+            text="Finanzas Personales",
         ))
 
-        self.nav_drawer.add_widget(header)
+        menu.add_widget(MDNavigationDrawerDivider())
 
-        # Menu items
-        from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
-
+        # Items del menú
         items = [
             ("home", "home", "Inicio"),
             ("gastos", "cart", "Gastos"),
             ("ingresos", "cash", "Ingresos"),
             ("dashboard", "chart-pie", "Dashboard"),
-            ("settings", "cog", "Configuración"),
         ]
 
         for screen_name, icon, text in items:
-            item = OneLineIconListItem(text=text, on_release=lambda x, s=screen_name: self.go_to_screen(s))
-            item.add_widget(IconLeftWidget(icon=icon))
-            self.nav_drawer.add_widget(item)
+            item = MDNavigationDrawerItem(
+                icon=icon,
+                text=text,
+                on_release=lambda x, s=screen_name: self.go_to_screen(s),
+            )
+            menu.add_widget(item)
+
+        menu.add_widget(MDNavigationDrawerDivider())
 
         # Logout
-        logout_item = OneLineIconListItem(text="Cerrar Sesión", on_release=lambda x: self.logout())
-        logout_item.add_widget(IconLeftWidget(icon="logout"))
-        self.nav_drawer.add_widget(logout_item)
+        logout_item = MDNavigationDrawerItem(
+            icon="logout",
+            text="Cerrar Sesión",
+            on_release=lambda x: self.logout(),
+        )
+        menu.add_widget(logout_item)
 
-        # No se agrega al ScreenManager; ya vive dentro del MDNavigationLayout del KV
+        self.nav_drawer.add_widget(menu)
     
     def on_start(self):
         """Se ejecuta al iniciar la app - TODO en hilo separado para evitar ANR"""
         logger.info("App iniciada")
         # Mover operaciones de red a hilo separado para evitar ANR
         Thread(target=self._init_app_background, daemon=True).start()
+        # Fix 6: Auto-sync periódico cada 30 segundos
+        Clock.schedule_interval(self._auto_sync_tick, 30)
+
+    def _auto_sync_tick(self, dt):
+        """Tick periódico de sync (cada 30s)"""
+        if self.sync_engine and self.auth_service and self.auth_service.esta_autenticado():
+            Thread(target=self.sync_engine.sync_all, daemon=True).start()
     
     def _init_app_background(self):
         """Inicialización en segundo plano (red, auth, sync)"""
@@ -633,19 +643,17 @@ MDNavigationLayout:
             total_ingresos = self.ingresos_service.calcular_total()
             self.current_balance = total_ingresos - total_gastos
 
-            # Actualizar UI - acceder a través de la pantalla home
+            # Fix 12: Guard - la pantalla home puede no existir aún
             try:
-                home_ids = self.sm.get_screen('home').ids
-                home_ids.balance_label.text = f"$ {self.current_balance:,.2f}"
-
-                # Actualizar último sync (solo si sync_engine está disponible)
-                if self.sync_engine:
-                    sync_status = self.sync_engine.get_sync_status()
-                    if sync_status.get('last_sync'):
-                        last_sync = sync_status['last_sync']
-                        home_ids.last_sync_label.text = f"Última sync: {last_sync}"
-            except KeyError:
-                pass  # La pantalla home no está disponible aún
+                home_screen = self.sm.get_screen('home')
+                if hasattr(home_screen, 'ids') and 'balance_label' in home_screen.ids:
+                    home_screen.ids.balance_label.text = f"$ {self.current_balance:,.2f}"
+                    if self.sync_engine:
+                        sync_status = self.sync_engine.get_sync_status()
+                        if sync_status.get('last_sync'):
+                            home_screen.ids.last_sync_label.text = f"Sync: {sync_status['last_sync']}"
+            except Exception:
+                pass  # Pantalla aún no inicializada
 
             # Cargar transacciones recientes
             self.load_recent_transactions()
