@@ -19,11 +19,11 @@ from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.screenmanager import MDScreenManager
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
-from kivymd.uix.list import OneLineAvatarListItem, IconLeftWidget
+from kivymd.uix.list import OneLineListItem
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivy.logger import Logger
 
-from src.core.services import GastosService, IngresosService, AuthService, PresupuestoService
+# NO importar src.* acá arriba — todo va dentro de build()
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -31,8 +31,6 @@ logger = logging.getLogger(__name__)
 
 # Detección de plataforma Android
 IS_ANDROID = sys.platform == "android"
-
-# Modo diagnóstico: python -c "import os; os.environ['DIAGNOSTIC_MODE']='1'"
 DIAGNOSTIC_MODE = os.environ.get('DIAGNOSTIC_MODE', '0') == '1'
 
 
@@ -66,10 +64,9 @@ class OrganizadorApp(MDApp):
 
     def build(self):
         """Construye la aplicación con manejo robusto de errores"""
-        Logger.info("=" * 50)
-        Logger.info("INICIANDO ORGANIZADOR FINANZAS")
-        Logger.info(f"DIAGNOSTIC_MODE: {DIAGNOSTIC_MODE}")
-        Logger.info("=" * 50)
+        Logger.info("=" * 40)
+        Logger.info("INICIANDO ORGANIZADOR")
+        Logger.info("=" * 40)
 
         # MODO DIAGNÓSTICO: Retorna UI minimalista para testear KivyMD
         if DIAGNOSTIC_MODE:
@@ -91,95 +88,90 @@ class OrganizadorApp(MDApp):
             return layout
 
         try:
-            # 1. Configurar tema (puede fallar si kivymd no está disponible)
-            Logger.info("Configurando tema MD...")
+            # Fix B: Importar servicios ACÁ ADENTRO, no en el tope del archivo
+            Logger.info("Importando servicios...")
+            from src.core.services import (
+                GastosService, IngresosService,
+                AuthService, PresupuestoService
+            )
+            Logger.info("Servicios importados OK")
+
+            # 1. Configurar tema
+            Logger.info("Configurando tema...")
             self.theme_cls.primary_palette = "Pink"
             self.theme_cls.accent_palette = "Purple"
             self.theme_cls.theme_style = "Light"
             Logger.info("Tema configurado")
 
-            # 2. Configurar ventana (solo en desktop, Android ignora esto)
+            # 2. Configurar ventana
             if not IS_ANDROID:
                 Window.size = (360, 640)
-                Window.minimum_width, Window.minimum_height = 300, 500
             Logger.info("Ventana configurada")
 
-            # 3. Cargar KV PRIMERO (antes de servicios, para detectar errores de UI)
-            Logger.info("Cargando archivo KV...")
-            kv_string = self.get_main_kv()
-            Logger.debug(f"KV string length: {len(kv_string)}")
-            root = Builder.load_string(kv_string)
-            Logger.info("KV cargado exitosamente")
+            # 3. Cargar KV
+            Logger.info("Cargando KV...")
+            root = Builder.load_string(self.get_main_kv())
+            Logger.info("KV cargado OK")
 
-            # 4. Verificar IDs requeridos
-            Logger.info("Verificando widgets requeridos...")
-            if not hasattr(root, 'ids'):
-                raise AttributeError("Root widget no tiene 'ids' attribute")
+            # 4. Verificar IDs críticos
             if 'screen_manager' not in root.ids:
-                raise KeyError("Falta 'screen_manager' en root.ids")
+                raise KeyError("screen_manager no encontrado en KV")
             if 'nav_drawer' not in root.ids:
-                raise KeyError("Falta 'nav_drawer' en root.ids")
-            Logger.info("Widgets verificados")
+                raise KeyError("nav_drawer no encontrado en KV")
+            Logger.info("IDs verificados OK")
 
-            # 5. Configurar referencias UI
+            # 5. Configurar UI
             self.sm = root.ids.screen_manager
             self.nav_drawer = root.ids.nav_drawer
             self.setup_navigation_drawer()
             Logger.info("UI configurada")
 
-            # 6. Inicializar servicios (puede fallar en Android sin DB)
-            Logger.info("Inicializando servicios...")
+            # 6. Inicializar servicios de negocio
+            Logger.info("Inicializando servicios de negocio...")
             try:
                 self.gastos_service = GastosService()
                 self.ingresos_service = IngresosService()
                 self.auth_service = AuthService()
                 self.presupuesto_service = PresupuestoService()
-                Logger.info("Servicios inicializados")
-            except Exception as svc_error:
-                Logger.warning(f"Servicios fallaron (continuar sin ellos): {svc_error}")
-                self.gastos_service = None
-                self.ingresos_service = None
-                self.auth_service = None
-                self.presupuesto_service = None
+                Logger.info("Servicios OK")
+            except Exception as svc_err:
+                Logger.warning(f"Servicios fallaron (modo offline): {svc_err}")
 
-            Logger.info("=== APP INICIADA EXITOSAMENTE ===")
+            # 7. Cloud sync en hilo separado
+            Clock.schedule_once(self._lazy_init_cloud, 0.5)
 
-            # 7. Inicializar Firebase/Sync en hilo separado (después del build)
-            Clock.schedule_once(self._lazy_init_cloud, 0.1)
-
+            Logger.info("BUILD EXITOSO")
             return root
 
         except Exception as e:
-            Logger.error("=" * 50)
-            Logger.error("CRASH DURANTE BUILD")
-            Logger.error(f"Error: {e}")
-            Logger.error(f"Traceback: {traceback.format_exc()}")
-            Logger.error("=" * 50)
+            Logger.error(f"CRASH EN BUILD: {e}")
+            Logger.error(traceback.format_exc())
 
-            # Mostrar error en pantalla en lugar de crashear
+            # Mostrar error en pantalla para poder diagnosticar sin logcat
             from kivy.uix.label import Label
             from kivy.uix.scrollview import ScrollView
             from kivy.uix.boxlayout import BoxLayout
 
-            error_layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
-            error_label = Label(
-                text=f"[color=ff0000][b]FATAL ERROR[/b][/color]\n\n[color=ffff00]{str(e)}[/color]\n\n{traceback.format_exc()}",
+            layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+            layout.add_widget(Label(
+                text="[b][color=ff4444]ERROR AL INICIAR[/color][/b]",
                 markup=True,
+                size_hint_y=None,
+                height=40,
+                font_size='14sp'
+            ))
+            sv = ScrollView(size_hint=(1, 1))
+            lbl = Label(
+                text=f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+                size_hint_y=None,
+                font_size='10sp',
                 halign='left',
                 valign='top',
-                size_hint_y=None,
-                height=800,
-                padding_x=dp(10),
-                font_size=dp(12)
             )
-            error_label.bind(texture_size=error_label.setter(size))
-            error_layout.add_widget(error_label)
-
-            scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
-            scroll.add_widget(error_layout)
-            
-            Logger.error("Mostrando pantalla de error en lugar de crash")
-            return scroll
+            lbl.bind(texture_size=lbl.setter('size'))
+            sv.add_widget(lbl)
+            layout.add_widget(sv)
+            return layout
 
     def _lazy_init_cloud(self, dt):
         """Inicializa Firebase y Sync en hilo separado para evitar ANR"""

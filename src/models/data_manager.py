@@ -5,7 +5,7 @@ Gestor de datos mejorado con validación automática y type hints.
 
 import sqlite3
 import os
-import uuid  # Fix 1: agregado para guardar_gasto y guardar_ingreso
+import uuid
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any
 import json
@@ -25,10 +25,35 @@ from src.config.env_config import DB_PATH
 # Configurar logging
 logger = get_logger('data_manager')
 
-# Rutas de la base de datos (usando paths.py para Android compatibility)
-DB_FILE = str(db_file())
-BACKUP_FILE = str(backup_file())
-DB_DIR = str(db_dir())
+# Fix C: Lazy path evaluation para evitar crash en import time en Android
+def _get_db_file():
+    try:
+        return str(db_file())
+    except Exception:
+        # Fallback Android: usar el directorio del proceso
+        fallback = os.path.join(
+            os.environ.get('ANDROID_APP_PATH', os.path.expanduser('~')),
+            'data', 'finanzas.db'
+        )
+        os.makedirs(os.path.dirname(fallback), exist_ok=True)
+        return fallback
+
+class _LazyPath:
+    """Clase para evaluación lazy de paths - evita crash en import time"""
+    def __init__(self, fn):
+        self._fn = fn
+        self._val = None
+    def __str__(self):
+        if self._val is None:
+            self._val = self._fn()
+        return self._val
+    def __fspath__(self):
+        return str(self)
+
+# Lazy evaluation - se resuelve cuando se usa por primera vez
+DB_FILE = _LazyPath(_get_db_file)
+BACKUP_FILE = _LazyPath(lambda: str(backup_file()))
+DB_DIR = _LazyPath(lambda: str(db_dir()))
 
 # Control de recursión para evitar bucles infinitos
 EN_PROCESO_DE_RESTAURACION = False

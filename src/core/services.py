@@ -149,40 +149,67 @@ class IngresosService:
 
 class PresupuestoService:
     """Servicio para gestión de presupuestos"""
-    
+
     def __init__(self):
-        from src.models.presupuesto_ia import PresupuestoInteligente
-        self.sistema = PresupuestoInteligente()
-    
+        # Fix D: Lazy init - no importar PresupuestoInteligente hasta que se use
+        self.sistema = None
+
+    def _get_sistema(self):
+        """Obtiene sistema de presupuesto de manera lazy"""
+        if self.sistema is None:
+            try:
+                from src.models.presupuesto_ia import PresupuestoInteligente
+                self.sistema = PresupuestoInteligente()
+            except Exception as e:
+                logger.warning(f"PresupuestoInteligente no disponible: {e}")
+        return self.sistema
+
     def generar_presupuesto_sugerido(self, mes: int = None, anio: int = None) -> Presupuesto:
         """Genera presupuesto sugerido basado en historial"""
+        sistema = self._get_sistema()
+        if not sistema:
+            # Fallback: devolver presupuesto vacío
+            return Presupuesto(
+                mes=mes or datetime.now().month,
+                anio=anio or datetime.now().year,
+                categorias={},
+                total_presupuestado=0.0
+            )
+        
         if mes is None:
             mes = datetime.now().month
         if anio is None:
             anio = datetime.now().year
-        
-        presupuesto_data = self.sistema.generar_presupuesto_sugerido()
-        
+
+        presupuesto_data = sistema.generar_presupuesto_sugerido()
+
         return Presupuesto(
             mes=mes,
             anio=anio,
             categorias=presupuesto_data.get('categorias', {}),
             total_presupuestado=presupuesto_data.get('total', 0.0)
         )
-    
+
     def obtener_presupuesto_actual(self) -> Optional[Presupuesto]:
         """Obtiene presupuesto actual guardado"""
-        presupuesto_data = self.sistema.cargar_presupuesto_actual()
-        
+        sistema = self._get_sistema()
+        if not sistema:
+            return None
+            
+        presupuesto_data = sistema.cargar_presupuesto_actual()
+
         if not presupuesto_data:
             return None
-        
+
         return Presupuesto.from_dict(presupuesto_data)
-    
+
     def guardar_presupuesto(self, presupuesto: Presupuesto) -> bool:
         """Guarda presupuesto"""
         try:
-            self.sistema.guardar_presupuesto(presupuesto.to_dict())
+            sistema = self._get_sistema()
+            if not sistema:
+                return False
+            sistema.guardar_presupuesto(presupuesto.to_dict())
             return True
         except Exception as e:
             logger.error(f"Error al guardar presupuesto: {e}")
